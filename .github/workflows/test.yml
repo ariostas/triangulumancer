@@ -30,6 +30,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install dependencies on macOS
+        if: runner.os == 'macOS'
+        run: brew install automake autoconf
       - name: Pip install the package
         run: python -m pip -v install .[test]
       - name: Run pytest
