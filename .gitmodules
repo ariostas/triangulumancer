@@ -1,0 +1,12 @@
+[submodule "extern/topcom"]
+	path = extern/topcom
+	url = https://github.com/ariostas/TOPCOM.git
+[submodule "extern/cgal"]
+	path = extern/cgal
+	url = https://github.com/CGAL/cgal.git
+[submodule "extern/eigen"]
+	path = extern/eigen
+	url = https://gitlab.com/libeigen/eigen
+[submodule "extern/boost"]
+	path = extern/boost
+	url = https://github.com/scipy/boost-headers-only.git
