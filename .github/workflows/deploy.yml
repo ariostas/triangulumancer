@@ -44,7 +44,7 @@ jobs:
           CIBW_TEST_REQUIRES: pytest
           CIBW_SKIP: "*_i686 *-macosx_x86_64"
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -l {package}/extern/topcom/external/lib -w {dest_dir} {wheel}"
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "cp -r /project/extern/topcom/external/lib/* /lib && auditwheel repair -w {dest_dir} {wheel}"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
