@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -22,6 +23,9 @@ struct PointConfiguration {
   // We keep a copy of the points in a more standard data type
   std::optional<pybind11::array_t<int64_t>> points_;
   bool has_new_points;
+
+  // We keep a copy that Triangulations can use
+  std::shared_ptr<PointConfiguration> shared_copy;
 
   // Constructors
   PointConfiguration() : pc(), points_(std::nullopt), has_new_points(false) {}

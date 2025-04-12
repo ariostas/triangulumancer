@@ -1,6 +1,7 @@
 #include <pybind11/pybind11.h>
 
 #include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/Triangulation.hpp"
 
 using namespace triangulumancer;
 
@@ -14,4 +15,9 @@ PYBIND11_MODULE(triangulumancer, m) {
       .def("points", &PointConfiguration::points)
       .def("add_point", &PointConfiguration::add_points)
       .def("add_points", &PointConfiguration::add_points);
+  pybind11::class_<Triangulation>(m, "Triangulation")
+      .def("n_simplices", &Triangulation::n_simplices)
+      .def("dim", &Triangulation::dim)
+      .def("__repr__", &Triangulation::repr)
+      .def("simplices", &Triangulation::simplices);
 }
