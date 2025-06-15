@@ -1,0 +1,11 @@
+name: triangulumancer
+channels:
+  - conda-forge
+dependencies:
+  - binutils
+  - clang
+  - clangxx
+  - cmake
+  - m4
+  - make
+  - python
