@@ -14,21 +14,34 @@ namespace triangulumancer {
 
 class Triangulation;
 
-struct PointConfiguration {
+// We keep the actual data in a separate struct so that it's easier
+// to share between triangulations
+struct PointConfigurationData {
   // This is what stores the main data
   // Points are stored with an extra 1 at the end
   // Topcom uses column-major order
-  topcom::PointConfiguration pc;
+  topcom::PointConfiguration topcom_pc;
 
   // We keep a copy of the points in a more standard data type
-  std::optional<pybind11::array_t<int64_t>> points_;
+  std::optional<pybind11::array_t<int64_t>> points;
   bool has_new_points;
 
-  // We keep a copy that Triangulations can use
-  std::shared_ptr<PointConfiguration> shared_copy;
+  // After constructing triangulations with it, we lock it
+  // so that it is no longer possible to add more points.
+  bool is_locked;
+
+  // Make it non-copyable
+  PointConfigurationData();
+  PointConfigurationData(PointConfigurationData &pc_data) = delete;
+};
+
+class PointConfiguration {
+public:
+  std::shared_ptr<PointConfigurationData> pc_data;
 
   // Constructors
-  PointConfiguration() : pc(), points_(std::nullopt), has_new_points(false) {}
+  PointConfiguration();
+  PointConfiguration(std::shared_ptr<PointConfigurationData> pc_data_in);
   PointConfiguration(pybind11::array_t<int64_t> const &matrix);
 
   // Basic info
@@ -47,6 +60,7 @@ struct PointConfiguration {
 
   // CGAL functionality
   // Triangulation triangulate(std::vector<int64_t> &parameters);
+  // Triangulation delaunay_triangulation();
 };
 
 } // namespace triangulumancer

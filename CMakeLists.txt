@@ -28,10 +28,8 @@ set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 
-set(TRIANGULUMANCER_SOURCES
-    src/triangulumancer/triangulumancer.cpp
-    src/triangulumancer/PointConfiguration.cpp
-    src/triangulumancer/Triangulation.cpp)
+set(TRIANGULUMANCER_SOURCES src/triangulumancer/triangulumancer.cpp
+                            src/triangulumancer/PointConfiguration.cpp)
 pybind11_add_module(triangulumancer ${TRIANGULUMANCER_SOURCES})
 target_link_libraries(triangulumancer PRIVATE topcom checkreg CGAL::CGAL
                                               Eigen3::Eigen)

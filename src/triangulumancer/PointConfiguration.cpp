@@ -2,6 +2,15 @@
 
 using namespace triangulumancer;
 
+PointConfigurationData::PointConfigurationData() : is_locked(false) {};
+
+PointConfiguration::PointConfiguration()
+    : pc_data(std::make_shared<PointConfigurationData>()) {}
+
+PointConfiguration::PointConfiguration(
+    std::shared_ptr<PointConfigurationData> pc_data_in)
+    : pc_data(pc_data_in) {}
+
 PointConfiguration::PointConfiguration(
     pybind11::array_t<int64_t> const &matrix) {
 
@@ -13,25 +22,28 @@ PointConfiguration::PointConfiguration(
   ssize_t n_pts = buf.shape[0];
   ssize_t d = buf.shape[1];
 
-  pc = topcom::Matrix(d + 1, n_pts);
+  pc_data->topcom_pc = topcom::Matrix(d + 1, n_pts);
   int64_t *ptr = static_cast<int64_t *>(buf.ptr);
   for (ssize_t i = 0; i < n_pts; i++) {
     for (ssize_t j = 0; j <= d; j++) {
       if (j == d) {
-        pc(j, i) = 1;
+        pc_data->topcom_pc(j, i) = 1;
       } else {
-        pc(j, i) = (signed long)ptr[i * d + j];
+        pc_data->topcom_pc(j, i) = (signed long)ptr[i * d + j];
       }
     }
   }
 
-  has_new_points = true;
+  pc_data->has_new_points = true;
 }
 
-size_t PointConfiguration::n_points() const { return pc.coldim(); }
+size_t PointConfiguration::n_points() const {
+  return pc_data->topcom_pc.coldim();
+}
 
 size_t PointConfiguration::dim() const {
-  return (pc.rowdim() > 0) ? pc.rowdim() - 1 : 0;
+  return (pc_data->topcom_pc.rowdim() > 0) ? pc_data->topcom_pc.rowdim() - 1
+                                           : 0;
 }
 
 std::string PointConfiguration::repr() const {
@@ -41,8 +53,8 @@ std::string PointConfiguration::repr() const {
 
 pybind11::array_t<int64_t> PointConfiguration::points() {
 
-  if (!has_new_points && points_.has_value()) {
-    return points_.value();
+  if (!pc_data->has_new_points && pc_data->points.has_value()) {
+    return pc_data->points.value();
   }
 
   size_t n_pts = n_points();
@@ -54,16 +66,20 @@ pybind11::array_t<int64_t> PointConfiguration::points() {
 
   for (size_t i = 0; i < n_pts; i++) {
     for (size_t j = 0; j < d; j++) {
-      buf[i * d + j] = pc(j, i).get_num().get_si();
+      buf[i * d + j] = pc_data->topcom_pc(j, i).get_num().get_si();
     }
   }
 
-  points_ = result;
-  has_new_points = false;
-  return points_.value();
+  pc_data->points = result;
+  pc_data->has_new_points = false;
+  return pc_data->points.value();
 }
 
 void PointConfiguration::add_points(pybind11::array_t<int64_t> const &matrix) {
+  if (pc_data->is_locked) {
+    throw std::runtime_error(
+        "Point configuration is locked, so more points can be added");
+  }
   pybind11::buffer_info buf = matrix.request();
   size_t d = dim();
   int64_t *ptr = static_cast<int64_t *>(buf.ptr);
@@ -76,8 +92,8 @@ void PointConfiguration::add_points(pybind11::array_t<int64_t> const &matrix) {
       v(i) = (signed long)ptr[i];
     }
     v(d) = 1;
-    pc.push_back(std::move(v));
-    has_new_points = true;
+    pc_data->topcom_pc.push_back(std::move(v));
+    pc_data->has_new_points = true;
   } else if (buf.ndim == 2) {
     size_t n_pts = buf.shape[0];
     if (buf.shape[1] != d) {
@@ -92,9 +108,9 @@ void PointConfiguration::add_points(pybind11::array_t<int64_t> const &matrix) {
           v(j) = (signed long)ptr[i * n_pts + j];
         }
       }
-      pc.push_back(std::move(v));
+      pc_data->topcom_pc.push_back(std::move(v));
     }
-    has_new_points = true;
+    pc_data->has_new_points = true;
   } else {
     throw std::runtime_error("Input must be a vector or a matrix");
   }
