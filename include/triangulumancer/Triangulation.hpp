@@ -7,27 +7,28 @@
 #include <pybind11/stl.h>
 #include <string>
 
+#include "triangulumancer/PointConfiguration.hpp"
+
 namespace triangulumancer {
 
-class PointConfiguration;
-
 struct Triangulation {
-  std::shared_ptr<PointConfiguration> pc;
+  // This is only a light wrapper
+  PointConfiguration pc;
 
-  pybind11::array_t<int64_t> simplices_;
+  pybind11::array_t<int64_t> m_simplices;
 
   // Constructors
   Triangulation() = delete;
-  Triangulation(std::shared_ptr<PointConfiguration> pc) : pc(pc) {}
-  Triangulation(std::shared_ptr<PointConfiguration> pc,
-                pybind11::array_t<int64_t> simplices_)
-      : pc(pc), simplices_(simplices_) {}
+  Triangulation(std::shared_ptr<PointConfigurationData> pc_data_in,
+                pybind11::array_t<int64_t> simplices_in);
+  Triangulation(PointConfiguration const &pc,
+                pybind11::array_t<int64_t> simplices_in);
 
   // Basic info
   size_t n_simplices() const;
   size_t dim() const;
   std::string repr() const;
-  pybind11::array_t<int64_t> simplices();
+  pybind11::array_t<int64_t> simplices() const;
 
   // TOPCOM functionality
   // neighbor_triangulations

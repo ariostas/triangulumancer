@@ -14,7 +14,13 @@ PYBIND11_MODULE(triangulumancer, m) {
       .def("__repr__", &PointConfiguration::repr)
       .def("points", &PointConfiguration::points)
       .def("add_point", &PointConfiguration::add_points)
-      .def("add_points", &PointConfiguration::add_points);
+      .def("add_points", &PointConfiguration::add_points)
+      .def("triangulate_with_heights",
+           &PointConfiguration::triangulate_with_heights)
+      .def("triangulate_with_weights",
+           &PointConfiguration::triangulate_with_weights)
+      .def("delaunay_triangulation",
+           &PointConfiguration::delaunay_triangulation);
   pybind11::class_<Triangulation>(m, "Triangulation")
       .def("n_simplices", &Triangulation::n_simplices)
       .def("dim", &Triangulation::dim)

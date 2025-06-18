@@ -1,5 +1,8 @@
 #include "triangulumancer/PointConfiguration.hpp"
 
+#include "triangulumancer/CGAL.hpp"
+#include "triangulumancer/PointConfiguration.hpp"
+
 using namespace triangulumancer;
 
 PointConfigurationData::PointConfigurationData() : is_locked(false) {};
@@ -11,8 +14,8 @@ PointConfiguration::PointConfiguration(
     std::shared_ptr<PointConfigurationData> pc_data_in)
     : pc_data(pc_data_in) {}
 
-PointConfiguration::PointConfiguration(
-    pybind11::array_t<int64_t> const &matrix) {
+PointConfiguration::PointConfiguration(pybind11::array_t<int64_t> const &matrix)
+    : pc_data(std::make_shared<PointConfigurationData>()) {
 
   pybind11::buffer_info buf = matrix.request();
   if (buf.ndim != 2) {
@@ -51,7 +54,7 @@ std::string PointConfiguration::repr() const {
          " with " + std::to_string(n_points()) + " points";
 }
 
-pybind11::array_t<int64_t> PointConfiguration::points() {
+pybind11::array_t<int64_t> PointConfiguration::points() const {
 
   if (!pc_data->has_new_points && pc_data->points.has_value()) {
     return pc_data->points.value();
@@ -114,4 +117,18 @@ void PointConfiguration::add_points(pybind11::array_t<int64_t> const &matrix) {
   } else {
     throw std::runtime_error("Input must be a vector or a matrix");
   }
+}
+
+Triangulation PointConfiguration::triangulate_with_heights(
+    std::vector<double> const &heights) {
+  return cgal::triangulate_cgal_infer_dim(*this, heights, true);
+}
+
+Triangulation PointConfiguration::triangulate_with_weights(
+    std::vector<double> const &weights) {
+  return cgal::triangulate_cgal_infer_dim(*this, weights, false);
+}
+
+Triangulation PointConfiguration::delaunay_triangulation() const {
+  return cgal::triangulate_delaunay(*this);
 }

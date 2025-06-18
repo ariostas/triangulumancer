@@ -30,9 +30,8 @@ struct PointConfigurationData {
   // so that it is no longer possible to add more points.
   bool is_locked;
 
-  // Make it non-copyable
   PointConfigurationData();
-  PointConfigurationData(PointConfigurationData &pc_data) = delete;
+  PointConfigurationData(PointConfigurationData &pc_data) = default;
 };
 
 class PointConfiguration {
@@ -48,7 +47,7 @@ public:
   size_t n_points() const;
   size_t dim() const;
   std::string repr() const;
-  pybind11::array_t<int64_t> points();
+  pybind11::array_t<int64_t> points() const;
 
   // Modifications
   void add_points(pybind11::array_t<int64_t> const &matrix);
@@ -59,8 +58,9 @@ public:
   // pushing_triangulation
 
   // CGAL functionality
-  // Triangulation triangulate(std::vector<int64_t> &parameters);
-  // Triangulation delaunay_triangulation();
+  Triangulation triangulate_with_heights(std::vector<double> const &heights);
+  Triangulation triangulate_with_weights(std::vector<double> const &weights);
+  Triangulation delaunay_triangulation() const;
 };
 
 } // namespace triangulumancer
