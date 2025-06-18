@@ -9,4 +9,4 @@
 	url = https://gitlab.com/libeigen/eigen
 [submodule "extern/boost"]
 	path = extern/boost
-	url = https://github.com/scipy/boost-headers-only.git
+	url = https://github.com/gerwaric/boost-headers-only.git
