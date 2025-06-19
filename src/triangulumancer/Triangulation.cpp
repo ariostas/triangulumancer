@@ -1,5 +1,6 @@
 #include "triangulumancer/Triangulation.hpp"
 #include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/TOPCOM.hpp"
 
 using namespace triangulumancer;
 
@@ -34,4 +35,8 @@ std::string Triangulation::repr() const {
 
 pybind11::array_t<int64_t> Triangulation::simplices() const {
   return m_simplices;
+}
+
+std::vector<Triangulation> Triangulation::neighbors() const {
+  return top::find_neighbors(*this);
 }

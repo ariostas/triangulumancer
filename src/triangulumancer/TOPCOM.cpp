@@ -1,15 +1,16 @@
 #include "triangulumancer/TOPCOM.hpp"
 
-#include <iterator>
-
 // TOPCOM includes
 #include "PlacingTriang.hh"
+#include "Symmetry.hh"
+#include "TriangFlips.hh"
+#include "TriangNode.hh"
 
 namespace triangulumancer::top {
 
 Triangulation
 simplicial_complex_to_triangulation(PointConfiguration const &pc,
-                                    ::topcom::SimplicialComplex &sc) {
+                                    topcom::SimplicialComplex const &sc) {
   size_t dim = pc.dim();
   // std::difference doesn't work with these iterators
   size_t n_simplices = 0;
@@ -31,8 +32,29 @@ simplicial_complex_to_triangulation(PointConfiguration const &pc,
   return Triangulation(pc, simplices);
 }
 
+topcom::SimplicialComplex
+triangulation_to_simplicial_complex(Triangulation const &t) {
+  auto simplices = t.simplices();
+  auto simplices_buf = simplices.data();
+
+  size_t n_simplices = t.n_simplices();
+  size_t dim = t.dim() + 1;
+
+  topcom::SimplicialComplex sc;
+  topcom::Simplex simp;
+
+  for (unsigned int simp_idx = 0; simp_idx < n_simplices; simp_idx++) {
+    simp.clear();
+    for (unsigned int dim_idx = 0; dim_idx < dim; dim_idx++) {
+      simp += simplices_buf[simp_idx * dim + dim_idx];
+    }
+    sc += simp;
+  }
+  return sc;
+}
+
 Triangulation triangulate_placing(PointConfiguration const &pc) {
-  ::topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
 
   if (points.rank() < points.rowdim()) {
     throw std::runtime_error("Points are not full rank");
@@ -44,10 +66,50 @@ Triangulation triangulate_placing(PointConfiguration const &pc) {
     throw std::runtime_error("Rank must not be larger than number of points");
   }
 
-  ::topcom::Chirotope chiro(points, false);
-  ::topcom::PlacingTriang t(chiro);
+  topcom::Chirotope chiro(points, false);
+  topcom::PlacingTriang t(chiro);
 
   return simplicial_complex_to_triangulation(pc, t);
+}
+
+std::vector<Triangulation> find_neighbors(Triangulation const &t) {
+  std::vector<Triangulation> neighbors;
+
+  topcom::PointConfiguration points = t.pc.pc_data->topcom_pc;
+
+  if (points.rank() < points.rowdim()) {
+    throw std::runtime_error("Points are not full rank");
+  }
+  if ((points.no() < 1) || (points.rank() < 1)) {
+    throw std::runtime_error("Number of points and rank must be at least one");
+  }
+  if (points.rank() > points.no()) {
+    throw std::runtime_error("Rank must not be larger than number of points");
+  }
+
+  topcom::Chirotope chiro(points, false);
+
+  size_t no(chiro.no());
+  size_t rank(chiro.rank());
+  topcom::SymmetryGroup symmetries(no);
+
+  topcom::SimplicialComplex seed = triangulation_to_simplicial_complex(t);
+
+  const topcom::symmetryptr_datapair seed_symmetryptrs(
+      symmetries.stabilizer_ptrs(seed));
+
+  const topcom::TriangNode tn(0, no, rank, seed);
+  const topcom::TriangFlips tf(chiro, tn, seed_symmetryptrs, false);
+  topcom::MarkedFlips mf = tf.flips();
+
+  for (auto t_it = mf.begin(); t_it != mf.end(); t_it++) {
+    auto fl = topcom::Flip(tn, t_it->first);
+    auto sc =
+        static_cast<topcom::SimplicialComplex>(topcom::TriangNode(0, tn, fl));
+    neighbors.push_back(simplicial_complex_to_triangulation(t.pc, sc));
+  }
+
+  return neighbors;
 }
 
 } // namespace triangulumancer::top

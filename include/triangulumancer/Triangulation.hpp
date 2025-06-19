@@ -31,7 +31,7 @@ struct Triangulation {
   pybind11::array_t<int64_t> simplices() const;
 
   // TOPCOM functionality
-  // neighbor_triangulations
+  std::vector<Triangulation> neighbors() const;
 };
 
 } // namespace triangulumancer

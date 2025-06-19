@@ -26,5 +26,6 @@ PYBIND11_MODULE(triangulumancer, m) {
       .def("n_simplices", &Triangulation::n_simplices)
       .def("dim", &Triangulation::dim)
       .def("__repr__", &Triangulation::repr)
-      .def("simplices", &Triangulation::simplices);
+      .def("simplices", &Triangulation::simplices)
+      .def("neighbors", &Triangulation::neighbors);
 }
