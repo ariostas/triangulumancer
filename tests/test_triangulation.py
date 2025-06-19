@@ -1,5 +1,7 @@
 from triangulumancer import PointConfiguration
 
+import pytest
+
 
 def test_delaunay_simplex():
     p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
@@ -31,3 +33,10 @@ def test_delaunay_square():
 
     t = p.triangulate_with_weights([1, 1, 1, 1, 1, 1, 1, 1, 1])
     assert len(t.simplices()) == 8
+
+
+def test_locking_pc():
+    p = PointConfiguration([[0, 0], [1, 0], [1, 1]])
+    p.delaunay_triangulation()
+    with pytest.raises(RuntimeError):
+        p.add_point([2, 2])

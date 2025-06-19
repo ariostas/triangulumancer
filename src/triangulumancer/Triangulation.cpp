@@ -5,11 +5,19 @@ using namespace triangulumancer;
 
 Triangulation::Triangulation(std::shared_ptr<PointConfigurationData> pc_data_in,
                              pybind11::array_t<int64_t> simplices_in)
-    : pc(pc_data_in), m_simplices(simplices_in) {}
+    : pc(pc_data_in), m_simplices(simplices_in) {
+  if (!pc.pc_data->is_locked) {
+    pc.pc_data->is_locked = true;
+  }
+}
 
 Triangulation::Triangulation(PointConfiguration const &pc_in,
                              pybind11::array_t<int64_t> simplices_in)
-    : pc(pc_in), m_simplices(simplices_in) {}
+    : pc(pc_in), m_simplices(simplices_in) {
+  if (!pc.pc_data->is_locked) {
+    pc.pc_data->is_locked = true;
+  }
+}
 
 size_t Triangulation::n_simplices() const {
   pybind11::buffer_info buf = m_simplices.request();
