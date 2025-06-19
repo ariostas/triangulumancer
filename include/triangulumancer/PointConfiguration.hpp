@@ -55,7 +55,7 @@ public:
 
   // TOPCOM functionality
   // all_triangulations
-  // pushing_triangulation
+  Triangulation placing_triangulation() const;
 
   // CGAL functionality
   Triangulation triangulate_with_heights(std::vector<double> const &heights);

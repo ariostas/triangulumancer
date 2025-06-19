@@ -2,6 +2,7 @@
 
 #include "triangulumancer/CGAL.hpp"
 #include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/TOPCOM.hpp"
 
 using namespace triangulumancer;
 
@@ -117,6 +118,10 @@ void PointConfiguration::add_points(pybind11::array_t<int64_t> const &matrix) {
   } else {
     throw std::runtime_error("Input must be a vector or a matrix");
   }
+}
+
+Triangulation PointConfiguration::placing_triangulation() const {
+  return top::triangulate_placing(*this);
 }
 
 Triangulation PointConfiguration::triangulate_with_heights(
