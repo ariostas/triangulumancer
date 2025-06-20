@@ -124,6 +124,16 @@ Triangulation PointConfiguration::placing_triangulation() const {
   return top::triangulate_placing(*this);
 }
 
+std::vector<Triangulation>
+PointConfiguration::all_connected_triangulations(bool only_fine) const {
+  return top::find_all_connected_triangulations(*this, only_fine);
+}
+
+std::vector<Triangulation>
+PointConfiguration::all_triangulations(bool only_fine) const {
+  return top::find_all_triangulations(*this, only_fine);
+}
+
 Triangulation PointConfiguration::triangulate_with_heights(
     std::vector<double> const &heights) {
   return cgal::triangulate_cgal_infer_dim(*this, heights, true);

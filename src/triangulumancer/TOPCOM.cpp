@@ -2,6 +2,8 @@
 
 // TOPCOM includes
 #include "PlacingTriang.hh"
+#include "SymmetricExtensionGraphMaster.hh"
+#include "SymmetricFlipGraph.hh"
 #include "Symmetry.hh"
 #include "TriangFlips.hh"
 #include "TriangNode.hh"
@@ -53,9 +55,7 @@ triangulation_to_simplicial_complex(Triangulation const &t) {
   return sc;
 }
 
-Triangulation triangulate_placing(PointConfiguration const &pc) {
-  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
-
+void validate_point_configuration(topcom::PointConfiguration const &points) {
   if (points.rank() < points.rowdim()) {
     throw std::runtime_error("Points are not full rank");
   }
@@ -65,6 +65,12 @@ Triangulation triangulate_placing(PointConfiguration const &pc) {
   if (points.rank() > points.no()) {
     throw std::runtime_error("Rank must not be larger than number of points");
   }
+}
+
+Triangulation triangulate_placing(PointConfiguration const &pc) {
+  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+
+  validate_point_configuration(points);
 
   topcom::Chirotope chiro(points, false);
   topcom::PlacingTriang t(chiro);
@@ -77,15 +83,7 @@ std::vector<Triangulation> find_neighbors(Triangulation const &t) {
 
   topcom::PointConfiguration points = t.pc.pc_data->topcom_pc;
 
-  if (points.rank() < points.rowdim()) {
-    throw std::runtime_error("Points are not full rank");
-  }
-  if ((points.no() < 1) || (points.rank() < 1)) {
-    throw std::runtime_error("Number of points and rank must be at least one");
-  }
-  if (points.rank() > points.no()) {
-    throw std::runtime_error("Rank must not be larger than number of points");
-  }
+  validate_point_configuration(points);
 
   topcom::Chirotope chiro(points, false);
 
@@ -110,6 +108,63 @@ std::vector<Triangulation> find_neighbors(Triangulation const &t) {
   }
 
   return neighbors;
+}
+
+std::vector<Triangulation>
+find_all_connected_triangulations(PointConfiguration const &pc,
+                                  bool only_fine) {
+  std::vector<Triangulation> all_triangs;
+
+  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+
+  validate_point_configuration(points);
+
+  topcom::Chirotope chiro(points, false);
+
+  size_t no(chiro.no());
+  size_t rank(chiro.rank());
+  topcom::SymmetryGroup symmetries(no);
+
+  topcom::SimplicialComplex seed = topcom::PlacingTriang(chiro);
+
+  const topcom::symmetryptr_datapair seed_symmetryptrs(
+      symmetries.stabilizer_ptrs(seed));
+
+  topcom::Volumes *voltableptr = nullptr;
+
+  auto callback = [&](topcom::SimplicialComplex sc) {
+    all_triangs.push_back(simplicial_complex_to_triangulation(pc, sc));
+  };
+
+  topcom::SymmetricFlipGraph sfg(no, rank, points, chiro, symmetries, seed,
+                                 seed_symmetryptrs, voltableptr, true,
+                                 only_fine, callback);
+
+  return all_triangs;
+}
+
+std::vector<Triangulation> find_all_triangulations(PointConfiguration const &pc,
+                                                   bool only_fine) {
+  std::vector<Triangulation> all_triangs;
+
+  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+
+  validate_point_configuration(points);
+
+  topcom::Chirotope chiro(points, false);
+
+  size_t no(chiro.no());
+  size_t rank(chiro.rank());
+  topcom::SymmetryGroup symmetries(no);
+
+  auto callback = [&](topcom::SimplicialComplex sc) {
+    all_triangs.push_back(simplicial_complex_to_triangulation(pc, sc));
+  };
+
+  topcom::SymmetricExtensionGraphMaster segm(
+      no, rank, points, chiro, symmetries, true, only_fine, false, callback);
+
+  return all_triangs;
 }
 
 } // namespace triangulumancer::top

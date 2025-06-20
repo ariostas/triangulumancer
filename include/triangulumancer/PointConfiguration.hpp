@@ -6,6 +6,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <string>
+#include <vector>
 
 // TOPCOM imports
 #include "PointConfiguration.hh"
@@ -54,7 +55,9 @@ public:
   // Removing points complicates things a lot, so it's not supported
 
   // TOPCOM functionality
-  // all_triangulations
+  std::vector<Triangulation>
+  all_connected_triangulations(bool only_fine = false) const;
+  std::vector<Triangulation> all_triangulations(bool only_fine = false) const;
   Triangulation placing_triangulation() const;
 
   // CGAL functionality
