@@ -39,6 +39,7 @@ target_link_libraries(triangulumancer PRIVATE topcom checkreg CGAL::CGAL
                                               Eigen3::Eigen)
 target_include_directories(triangulumancer PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_features(triangulumancer PRIVATE cxx_std_17)
-target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED)
+target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED
+                                                   USE_PHIT_PREPROCESSING=false)
 
 install(TARGETS triangulumancer DESTINATION .)
