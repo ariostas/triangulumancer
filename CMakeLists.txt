@@ -31,12 +31,15 @@ find_package(pybind11 CONFIG REQUIRED)
 set(TRIANGULUMANCER_SOURCES
     src/triangulumancer/triangulumancer.cpp
     src/triangulumancer/PointConfiguration.cpp
-    src/triangulumancer/Triangulation.cpp src/triangulumancer/CGAL.cpp)
+    src/triangulumancer/Triangulation.cpp
+    src/triangulumancer/CGAL.cpp
+    src/triangulumancer/TOPCOM.cpp)
 pybind11_add_module(triangulumancer ${TRIANGULUMANCER_SOURCES})
 target_link_libraries(triangulumancer PRIVATE topcom checkreg CGAL::CGAL
                                               Eigen3::Eigen)
 target_include_directories(triangulumancer PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_features(triangulumancer PRIVATE cxx_std_17)
-target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED)
+target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED
+                                                   USE_PHIT_PREPROCESSING=false)
 
 install(TARGETS triangulumancer DESTINATION .)
