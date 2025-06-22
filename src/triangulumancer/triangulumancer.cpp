@@ -18,9 +18,9 @@ PYBIND11_MODULE(triangulumancer, m) {
       .def("placing_triangulation", &PointConfiguration::placing_triangulation)
       .def("all_connected_triangulations",
            &PointConfiguration::all_connected_triangulations,
-           pybind11::arg("only_fine") = true)
+           pybind11::arg("only_fine") = false)
       .def("all_triangulations", &PointConfiguration::all_triangulations,
-           pybind11::arg("only_fine") = true)
+           pybind11::arg("only_fine") = false)
       .def("triangulate_with_heights",
            &PointConfiguration::triangulate_with_heights)
       .def("triangulate_with_weights",

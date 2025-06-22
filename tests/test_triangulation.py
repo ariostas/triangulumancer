@@ -66,8 +66,8 @@ def test_topcom_square():
 
     assert len(t.neighbors()) == 6
 
-    assert len(p.all_connected_triangulations(False)) == 387
+    assert len(p.all_connected_triangulations()) == 387
     assert len(p.all_connected_triangulations(True)) == 64
 
-    assert len(p.all_triangulations(False)) == 387
+    assert len(p.all_triangulations()) == 387
     assert len(p.all_triangulations(True)) == 64

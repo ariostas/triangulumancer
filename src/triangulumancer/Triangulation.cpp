@@ -28,7 +28,7 @@ size_t Triangulation::n_simplices() const {
 size_t Triangulation::dim() const { return pc.dim(); }
 
 std::string Triangulation::repr() const {
-  return "A triamgulation with " + std::to_string(n_simplices()) +
+  return "A triangulation with " + std::to_string(n_simplices()) +
          " simplices of a point configuration with " +
          std::to_string(pc.n_points()) + " points";
 }
