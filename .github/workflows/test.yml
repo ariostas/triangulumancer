@@ -34,6 +34,7 @@ jobs:
         run: python -m pip -v install .[test]
       - name: Run pytest
         run: |
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/extern/topcom/external/lib/
           pytest -vv
 
   check:

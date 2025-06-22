@@ -10,6 +10,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # TOPCOM
 add_subdirectory(extern/topcom)
+target_compile_definitions(topcom PUBLIC USE_PHIT_PREPROCESSING=false)
 
 # Boost (headers only)
 set(Boost_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/extern/boost)
@@ -31,7 +32,9 @@ find_package(pybind11 CONFIG REQUIRED)
 set(TRIANGULUMANCER_SOURCES
     src/triangulumancer/triangulumancer.cpp
     src/triangulumancer/PointConfiguration.cpp
-    src/triangulumancer/Triangulation.cpp src/triangulumancer/CGAL.cpp)
+    src/triangulumancer/Triangulation.cpp
+    src/triangulumancer/CGAL.cpp
+    src/triangulumancer/TOPCOM.cpp)
 pybind11_add_module(triangulumancer ${TRIANGULUMANCER_SOURCES})
 target_link_libraries(triangulumancer PRIVATE topcom checkreg CGAL::CGAL
                                               Eigen3::Eigen)
