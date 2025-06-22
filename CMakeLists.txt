@@ -10,6 +10,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # TOPCOM
 add_subdirectory(extern/topcom)
+target_compile_definitions(topcom PUBLIC USE_PHIT_PREPROCESSING=false)
 
 # Boost (headers only)
 set(Boost_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/extern/boost)
@@ -39,7 +40,6 @@ target_link_libraries(triangulumancer PRIVATE topcom checkreg CGAL::CGAL
                                               Eigen3::Eigen)
 target_include_directories(triangulumancer PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_features(triangulumancer PRIVATE cxx_std_17)
-target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED
-                                                   USE_PHIT_PREPROCESSING=false)
+target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED)
 
 install(TARGETS triangulumancer DESTINATION .)
