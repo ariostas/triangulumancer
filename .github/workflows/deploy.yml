@@ -58,7 +58,7 @@ jobs:
     needs: [build-wheels, make-sdist]
     environment:
       name: pypi
-      url: https://pypi.org/p/cygv
+      url: https://pypi.org/p/triangulumancer
     permissions:
       id-token: write
     if: github.event_name == 'release' && github.event.action == 'published'
