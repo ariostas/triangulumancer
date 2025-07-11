@@ -1,4 +1,4 @@
-from triangulumancer import PointConfiguration
+from triangulumancer import PointConfiguration, Triangulation
 
 import pytest
 
@@ -71,3 +71,11 @@ def test_topcom_square():
 
     assert len(p.all_triangulations()) == 387
     assert len(p.all_triangulations(True)) == 64
+
+
+def test_direct_construction():
+    p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
+    simplices = [[0, 1, 2]]
+    t = Triangulation(p, simplices)
+
+    assert t.simplices().tolist() == simplices

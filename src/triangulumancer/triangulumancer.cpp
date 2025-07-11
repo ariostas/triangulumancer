@@ -28,6 +28,8 @@ PYBIND11_MODULE(triangulumancer, m) {
       .def("delaunay_triangulation",
            &PointConfiguration::delaunay_triangulation);
   pybind11::class_<Triangulation>(m, "Triangulation")
+      .def(pybind11::init<PointConfiguration const &,
+                          pybind11::array_t<int> const &>())
       .def("n_simplices", &Triangulation::n_simplices)
       .def("dim", &Triangulation::dim)
       .def("__repr__", &Triangulation::repr)
