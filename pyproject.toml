@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "triangulumancer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Construct triangulations of point configurations."
 readme = "README.md"
 license = {file = "LICENSE"}
