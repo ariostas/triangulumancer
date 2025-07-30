@@ -59,6 +59,7 @@ public:
   all_connected_triangulations(bool only_fine = false) const;
   std::vector<Triangulation> all_triangulations(bool only_fine = false) const;
   Triangulation placing_triangulation() const;
+  Triangulation fine_triangulation() const;
 
   // CGAL functionality
   Triangulation triangulate_with_heights(std::vector<double> const &heights);

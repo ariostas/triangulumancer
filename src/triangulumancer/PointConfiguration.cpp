@@ -124,6 +124,10 @@ Triangulation PointConfiguration::placing_triangulation() const {
   return top::triangulate_placing(*this);
 }
 
+Triangulation PointConfiguration::fine_triangulation() const {
+  return top::triangulate_fine(*this);
+}
+
 std::vector<Triangulation>
 PointConfiguration::all_connected_triangulations(bool only_fine) const {
   return top::find_all_connected_triangulations(*this, only_fine);

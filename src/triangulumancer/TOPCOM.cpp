@@ -1,6 +1,7 @@
 #include "triangulumancer/TOPCOM.hpp"
 
 // TOPCOM includes
+#include "FineTriang.hh"
 #include "PlacingTriang.hh"
 #include "SymmetricExtensionGraphMaster.hh"
 #include "SymmetricFlipGraph.hh"
@@ -74,6 +75,17 @@ Triangulation triangulate_placing(PointConfiguration const &pc) {
 
   topcom::Chirotope chiro(points, false);
   topcom::PlacingTriang t(chiro);
+
+  return simplicial_complex_to_triangulation(pc, t);
+}
+
+Triangulation triangulate_fine(PointConfiguration const &pc) {
+  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+
+  validate_point_configuration(points);
+
+  topcom::Chirotope chiro(points, false);
+  topcom::FineTriang t(chiro);
 
   return simplicial_complex_to_triangulation(pc, t);
 }

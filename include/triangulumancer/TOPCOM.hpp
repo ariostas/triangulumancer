@@ -8,6 +8,8 @@ namespace triangulumancer::top {
 Triangulation
 triangulate_placing(triangulumancer::PointConfiguration const &pc);
 
+Triangulation triangulate_fine(triangulumancer::PointConfiguration const &pc);
+
 std::vector<Triangulation> find_neighbors(Triangulation const &t);
 
 std::vector<Triangulation>
