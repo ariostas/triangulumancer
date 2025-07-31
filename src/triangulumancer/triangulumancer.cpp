@@ -5,7 +5,8 @@
 
 using namespace triangulumancer;
 
-PYBIND11_MODULE(triangulumancer, m) {
+PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
+                pybind11::multiple_interpreters::per_interpreter_gil()) {
   pybind11::class_<PointConfiguration>(m, "PointConfiguration")
       .def(pybind11::init<>())
       .def(pybind11::init<pybind11::array_t<int> const &>())

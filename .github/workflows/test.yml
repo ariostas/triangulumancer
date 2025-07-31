@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14]
-        python-version: ["3.9", "3.13"]
+        python-version: ["3.9", "3.14"]
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -30,6 +30,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
       - name: Pip install the package
         run: python -m pip -v install .[test]
       - name: Run pytest
