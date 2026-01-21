@@ -8,12 +8,14 @@
 #include <string>
 
 #include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/VectorConfiguration.hpp"
 
 namespace triangulumancer {
 
 struct Triangulation {
   // This is only a light wrapper
   PointConfiguration pc;
+  VectorConfiguration vc;
 
   pybind11::array_t<int64_t> m_simplices;
 
@@ -22,6 +24,10 @@ struct Triangulation {
   Triangulation(std::shared_ptr<PointConfigurationData> pc_data_in,
                 pybind11::array_t<int64_t> simplices_in);
   Triangulation(PointConfiguration const &pc,
+                pybind11::array_t<int64_t> simplices_in);
+    Triangulation(std::shared_ptr<VectorConfigurationData> vc_data_in,
+                pybind11::array_t<int64_t> simplices_in);
+  Triangulation(VectorConfiguration const &vc,
                 pybind11::array_t<int64_t> simplices_in);
 
   // Basic info

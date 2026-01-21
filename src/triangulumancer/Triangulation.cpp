@@ -1,5 +1,6 @@
 #include "triangulumancer/Triangulation.hpp"
 #include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/VectorConfiguration.hpp"
 #include "triangulumancer/TOPCOM.hpp"
 
 using namespace triangulumancer;
@@ -17,6 +18,22 @@ Triangulation::Triangulation(PointConfiguration const &pc_in,
     : pc(pc_in), m_simplices(simplices_in) {
   if (!pc.pc_data->is_locked) {
     pc.pc_data->is_locked = true;
+  }
+}
+
+Triangulation::Triangulation(std::shared_ptr<VectorConfigurationData> vc_data_in,
+                             pybind11::array_t<int64_t> simplices_in)
+    : vc(vc_data_in), m_simplices(simplices_in) {
+  if (!vc.vc_data->is_locked) {
+    vc.vc_data->is_locked = true;
+  }
+}
+
+Triangulation::Triangulation(VectorConfiguration const &vc_in,
+                             pybind11::array_t<int64_t> simplices_in)
+    : vc(vc_in), m_simplices(simplices_in) {
+  if (!vc.vc_data->is_locked) {
+    vc.vc_data->is_locked = true;
   }
 }
 

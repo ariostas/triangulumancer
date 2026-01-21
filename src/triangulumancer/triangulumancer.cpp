@@ -45,13 +45,7 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
            &VectorConfiguration::all_connected_triangulations,
            pybind11::arg("only_fine") = false)
       .def("all_triangulations", &VectorConfiguration::all_triangulations,
-           pybind11::arg("only_fine") = false)
-      .def("triangulate_with_heights",
-           &VectorConfiguration::triangulate_with_heights)
-      .def("triangulate_with_weights",
-           &VectorConfiguration::triangulate_with_weights)
-      .def("delaunay_triangulation",
-           &VectorConfiguration::delaunay_triangulation);
+           pybind11::arg("only_fine") = false);
   pybind11::class_<Triangulation>(m, "Triangulation")
       .def(pybind11::init<PointConfiguration const &,
                           pybind11::array_t<int> const &>())
