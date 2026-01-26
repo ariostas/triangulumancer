@@ -113,6 +113,7 @@ Triangulation VectorConfiguration::placing_triangulation() const {
   return top::triangulate_placing(*this);
 }
 
+/*
 Triangulation VectorConfiguration::fine_triangulation() const {
   return top::triangulate_fine(*this);
 }
@@ -121,6 +122,7 @@ std::vector<Triangulation>
 VectorConfiguration::all_connected_triangulations(bool only_fine) const {
   return top::find_all_connected_triangulations(*this, only_fine);
 }
+*/
 
 std::vector<Triangulation>
 VectorConfiguration::all_triangulations(bool only_fine) const {
