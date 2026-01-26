@@ -16,6 +16,7 @@ struct Triangulation {
   // This is only a light wrapper
   PointConfiguration pc;
   VectorConfiguration vc;
+  bool isPC;
 
   pybind11::array_t<int64_t> m_simplices;
 
@@ -25,7 +26,7 @@ struct Triangulation {
                 pybind11::array_t<int64_t> simplices_in);
   Triangulation(PointConfiguration const &pc,
                 pybind11::array_t<int64_t> simplices_in);
-    Triangulation(std::shared_ptr<VectorConfigurationData> vc_data_in,
+  Triangulation(std::shared_ptr<VectorConfigurationData> vc_data_in,
                 pybind11::array_t<int64_t> simplices_in);
   Triangulation(VectorConfiguration const &vc,
                 pybind11::array_t<int64_t> simplices_in);
