@@ -82,13 +82,14 @@ triangulation_to_simplicial_complex(Triangulation const &t) {
 
 void validate_configuration(topcom::PointConfiguration const &points) {
   if (points.rank() < points.rowdim()) {
-    throw std::runtime_error("Points are not full rank");
+    throw std::runtime_error("Configuration is not full rank");
   }
   if ((points.no() < 1) || (points.rank() < 1)) {
-    throw std::runtime_error("Number of points and rank must be at least one");
+    std::cout << points.no() << "," << points.rank() << std::endl;
+    throw std::runtime_error("Number of points/vectors and rank must be at least one");
   }
   if (points.rank() > points.no()) {
-    throw std::runtime_error("Rank must not be larger than number of points");
+    throw std::runtime_error("Rank must not be larger than number of points/vectors");
   }
 }
 
@@ -125,21 +126,15 @@ Triangulation triangulate_fine(PointConfiguration const &pc) {
   return simplicial_complex_to_triangulation(pc, t);
 }
 
-Triangulation triangulate_fine(VectorConfiguration const &vc) {
-  topcom::PointConfiguration vectors = vc.vc_data->topcom_vc;
-
-  validate_configuration(vectors);
-
-  topcom::Chirotope chiro(vectors, false);
-  topcom::FineTriang t(chiro);
-
-  return simplicial_complex_to_triangulation(vc, t);
-}
-
 std::vector<Triangulation> find_neighbors(Triangulation const &t) {
   std::vector<Triangulation> neighbors;
 
-  topcom::PointConfiguration points = t.pc.pc_data->topcom_pc;
+  topcom::PointConfiguration points;
+  if (t.isPC) {
+    points = t.pc.pc_data->topcom_pc;
+  } else {
+    throw std::runtime_error("Neighbors of vector configurations are not yet supported");
+  }
 
   validate_configuration(points);
 
@@ -162,7 +157,11 @@ std::vector<Triangulation> find_neighbors(Triangulation const &t) {
     auto fl = topcom::Flip(tn, t_it->first);
     auto sc =
         static_cast<topcom::SimplicialComplex>(topcom::TriangNode(0, tn, fl));
-    neighbors.push_back(simplicial_complex_to_triangulation(t.pc, sc));
+    if (t.isPC) {
+      neighbors.push_back(simplicial_complex_to_triangulation(t.pc, sc));
+    } else {
+      throw std::runtime_error("Neighbors of Vector Configurations are not yet supported");
+    }
   }
 
   return neighbors;
@@ -195,39 +194,6 @@ find_all_connected_triangulations(PointConfiguration const &pc,
   };
 
   topcom::SymmetricFlipGraph sfg(no, rank, points, chiro, symmetries, seed,
-                                 seed_symmetryptrs, voltableptr, true,
-                                 only_fine, callback);
-
-  return all_triangs;
-}
-
-std::vector<Triangulation>
-find_all_connected_triangulations(VectorConfiguration const &vc,
-                                  bool only_fine) {
-  std::vector<Triangulation> all_triangs;
-
-  topcom::PointConfiguration vectors = vc.vc_data->topcom_vc;
-
-  validate_configuration(vectors);
-
-  topcom::Chirotope chiro(vectors, false);
-
-  size_t no(chiro.no());
-  size_t rank(chiro.rank());
-  topcom::SymmetryGroup symmetries(no);
-
-  topcom::SimplicialComplex seed = topcom::PlacingTriang(chiro);
-
-  const topcom::symmetryptr_datapair seed_symmetryptrs(
-      symmetries.stabilizer_ptrs(seed));
-
-  topcom::Volumes *voltableptr = nullptr;
-
-  auto callback = [&](topcom::SimplicialComplex sc) {
-    all_triangs.push_back(simplicial_complex_to_triangulation(vc, sc));
-  };
-
-  topcom::SymmetricFlipGraph sfg(no, rank, vectors, chiro, symmetries, seed,
                                  seed_symmetryptrs, voltableptr, true,
                                  only_fine, callback);
 
