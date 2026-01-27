@@ -1,8 +1,8 @@
 #include <pybind11/pybind11.h>
 
 #include "triangulumancer/PointConfiguration.hpp"
-#include "triangulumancer/VectorConfiguration.hpp"
 #include "triangulumancer/Triangulation.hpp"
+#include "triangulumancer/VectorConfiguration.hpp"
 
 using namespace triangulumancer;
 

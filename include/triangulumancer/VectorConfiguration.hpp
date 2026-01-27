@@ -55,11 +55,11 @@ public:
   // Removing vectors complicates things a lot, so it's not supported
 
   // TOPCOM functionality
-  //std::vector<Triangulation>
-  //all_connected_triangulations(bool only_fine = false) const;
+  // std::vector<Triangulation>
+  // all_connected_triangulations(bool only_fine = false) const;
   std::vector<Triangulation> all_triangulations(bool only_fine = false) const;
   Triangulation placing_triangulation() const;
-  //Triangulation fine_triangulation() const;
+  // Triangulation fine_triangulation() const;
 };
 
 } // namespace triangulumancer

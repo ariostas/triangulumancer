@@ -86,10 +86,12 @@ void validate_configuration(topcom::PointConfiguration const &points) {
   }
   if ((points.no() < 1) || (points.rank() < 1)) {
     std::cout << points.no() << "," << points.rank() << std::endl;
-    throw std::runtime_error("Number of points/vectors and rank must be at least one");
+    throw std::runtime_error(
+        "Number of points/vectors and rank must be at least one");
   }
   if (points.rank() > points.no()) {
-    throw std::runtime_error("Rank must not be larger than number of points/vectors");
+    throw std::runtime_error(
+        "Rank must not be larger than number of points/vectors");
   }
 }
 
@@ -133,7 +135,8 @@ std::vector<Triangulation> find_neighbors(Triangulation const &t) {
   if (t.isPC) {
     points = t.pc.pc_data->topcom_pc;
   } else {
-    throw std::runtime_error("Neighbors of vector configurations are not yet supported");
+    throw std::runtime_error(
+        "Neighbors of vector configurations are not yet supported");
   }
 
   validate_configuration(points);
@@ -160,7 +163,8 @@ std::vector<Triangulation> find_neighbors(Triangulation const &t) {
     if (t.isPC) {
       neighbors.push_back(simplicial_complex_to_triangulation(t.pc, sc));
     } else {
-      throw std::runtime_error("Neighbors of Vector Configurations are not yet supported");
+      throw std::runtime_error(
+          "Neighbors of Vector Configurations are not yet supported");
     }
   }
 
@@ -224,8 +228,8 @@ std::vector<Triangulation> find_all_triangulations(PointConfiguration const &pc,
   return all_triangs;
 }
 
-std::vector<Triangulation> find_all_triangulations(VectorConfiguration const &vc,
-                                                   bool only_fine) {
+std::vector<Triangulation>
+find_all_triangulations(VectorConfiguration const &vc, bool only_fine) {
   std::vector<Triangulation> all_triangs;
 
   topcom::PointConfiguration vectors = vc.vc_data->topcom_vc;

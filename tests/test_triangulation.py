@@ -79,24 +79,28 @@ def test_topcom_square():
     assert len(p.all_triangulations()) == 387
     assert len(p.all_triangulations(True)) == 64
 
+
 def test_topcom_simplicial_cone():
     vc = VectorConfiguration([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    t  = vc.placing_triangulation()
+    t = vc.placing_triangulation()
     assert len(t.simplices()) == 1
     assert set(t.simplices()[0]) == {0, 1, 2}
 
     assert len(vc.all_triangulations()) == 1
     assert len(vc.all_triangulations(True)) == 1
 
+
 def test_topcom_square_vc():
     vc = VectorConfiguration(
         [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
     )
     t = vc.placing_triangulation()
-    assert len(t.simplices()) == 6 # simps: 01, 12, 23, 34, 45, 50
+    assert len(t.simplices()) == 6  # simps: 01, 12, 23, 34, 45, 50
 
     assert len(vc.all_triangulations()) == 131
-    assert len(vc.all_triangulations(True)) == 1 # simps: 01, 12, 23, 34, 45, 56, 67, 70
+    assert (
+        len(vc.all_triangulations(True)) == 1
+    )  # simps: 01, 12, 23, 34, 45, 56, 67, 70
 
 
 def test_direct_construction():

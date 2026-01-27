@@ -1,7 +1,7 @@
 #include "triangulumancer/VectorConfiguration.hpp"
 
-#include "triangulumancer/VectorConfiguration.hpp"
 #include "triangulumancer/TOPCOM.hpp"
+#include "triangulumancer/VectorConfiguration.hpp"
 
 using namespace triangulumancer;
 
@@ -14,7 +14,8 @@ VectorConfiguration::VectorConfiguration(
     std::shared_ptr<VectorConfigurationData> vc_data_in)
     : vc_data(vc_data_in) {}
 
-VectorConfiguration::VectorConfiguration(pybind11::array_t<int64_t> const &matrix)
+VectorConfiguration::VectorConfiguration(
+    pybind11::array_t<int64_t> const &matrix)
     : vc_data(std::make_shared<VectorConfigurationData>()) {
 
   pybind11::buffer_info buf = matrix.request();
@@ -40,9 +41,7 @@ size_t VectorConfiguration::n_vectors() const {
   return vc_data->topcom_vc.coldim();
 }
 
-size_t VectorConfiguration::dim() const {
-  return vc_data->topcom_vc.rowdim();
-}
+size_t VectorConfiguration::dim() const { return vc_data->topcom_vc.rowdim(); }
 
 std::string VectorConfiguration::repr() const {
   return "A " + std::to_string(dim()) + "-dimensional vector configuration" +
@@ -73,7 +72,8 @@ pybind11::array_t<int64_t> VectorConfiguration::vectors() const {
   return vc_data->vectors.value();
 }
 
-void VectorConfiguration::add_vectors(pybind11::array_t<int64_t> const &matrix) {
+void VectorConfiguration::add_vectors(
+    pybind11::array_t<int64_t> const &matrix) {
   if (vc_data->is_locked) {
     throw std::runtime_error(
         "Vector configuration is locked, so more vectors can be added");
