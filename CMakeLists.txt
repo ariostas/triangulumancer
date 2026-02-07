@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15...3.29)
+cmake_minimum_required(VERSION 3.24...4.1)
 project(
   ${SKBUILD_PROJECT_NAME}
   DESCRIPTION "Compute triangulations of point configurations"
@@ -9,22 +9,28 @@ project(
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # TOPCOM
-add_subdirectory(extern/topcom)
+include(FetchContent)
+FetchContent_Declare(
+  topcom
+  GIT_REPOSITORY https://github.com/ariostas/TOPCOM.git
+  GIT_TAG main)
+FetchContent_MakeAvailable(topcom)
 target_compile_definitions(topcom PUBLIC USE_PHIT_PREPROCESSING=false)
 
+# Search conda paths
+if(DEFINED ENV{CONDA_PREFIX})
+  list(PREPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}")
+endif()
+
 # Boost (headers only)
-set(Boost_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/extern/boost)
+find_package(Boost CONFIG REQUIRED)
 
 # CGAL
 set(CGAL_DISABLE_GMP ON)
-set(CGAL_DIR ${CMAKE_SOURCE_DIR}/extern/cgal)
-find_package(CGAL REQUIRED CONFIG)
+find_package(CGAL CONFIG REQUIRED)
 
 # Eigen
-add_library(Eigen3::Eigen INTERFACE IMPORTED)
-# Don't use add_subdirectory because it configures stuff we don't want
-set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
-                                               ${CMAKE_SOURCE_DIR}/extern/eigen)
+find_package(Eigen3 CONFIG REQUIRED)
 
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
@@ -38,7 +44,7 @@ set(TRIANGULUMANCER_SOURCES
     src/triangulumancer/TOPCOM.cpp)
 pybind11_add_module(triangulumancer ${TRIANGULUMANCER_SOURCES})
 target_link_libraries(triangulumancer PRIVATE topcom checkreg CGAL::CGAL
-                                              Eigen3::Eigen)
+                                              Eigen3::Eigen Boost::headers)
 target_include_directories(triangulumancer PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_features(triangulumancer PRIVATE cxx_std_17)
 target_compile_definitions(triangulumancer PRIVATE CGAL_EIGEN3_ENABLED)
