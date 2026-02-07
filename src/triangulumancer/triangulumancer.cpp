@@ -2,6 +2,7 @@
 
 #include "triangulumancer/PointConfiguration.hpp"
 #include "triangulumancer/Triangulation.hpp"
+#include "triangulumancer/VectorConfiguration.hpp"
 
 using namespace triangulumancer;
 
@@ -29,6 +30,22 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
            &PointConfiguration::triangulate_with_weights)
       .def("delaunay_triangulation",
            &PointConfiguration::delaunay_triangulation);
+  pybind11::class_<VectorConfiguration>(m, "VectorConfiguration")
+      .def(pybind11::init<>())
+      .def(pybind11::init<pybind11::array_t<int> const &>())
+      .def("n_vectors", &VectorConfiguration::n_vectors)
+      .def("dim", &VectorConfiguration::dim)
+      .def("__repr__", &VectorConfiguration::repr)
+      .def("vectors", &VectorConfiguration::vectors)
+      .def("add_vector", &VectorConfiguration::add_vectors)
+      .def("add_vectors", &VectorConfiguration::add_vectors)
+      .def("placing_triangulation", &VectorConfiguration::placing_triangulation)
+      //.def("fine_triangulation", &VectorConfiguration::fine_triangulation)
+      //.def("all_connected_triangulations",
+      //     &VectorConfiguration::all_connected_triangulations,
+      //     pybind11::arg("only_fine") = false)
+      .def("all_triangulations", &VectorConfiguration::all_triangulations,
+           pybind11::arg("only_fine") = false);
   pybind11::class_<Triangulation>(m, "Triangulation")
       .def(pybind11::init<PointConfiguration const &,
                           pybind11::array_t<int> const &>())
