@@ -41,6 +41,7 @@ jobs:
             cgal
             gmp
             libboost
+            cddlib
             cmake
       - name: Pip install the package
         run: python -m pip -v install .[test]
