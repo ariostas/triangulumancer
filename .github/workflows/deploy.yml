@@ -11,20 +11,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Disabled until CMakeLists.txt is updated to download everything it needs
-  # make-sdist:
-  #   name: Make SDist
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #       with:
-  #         submodules: "recursive"
-  #     - name: Build SDist
-  #       run: pipx run build --sdist
-  #     - uses: actions/upload-artifact@v6
-  #       with:
-  #         name: cibw-sdist
-  #         path: dist/*.tar.gz
+  make-sdist:
+    name: Make SDist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: "recursive"
+      - name: Build SDist
+        run: pipx run build --sdist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
 
   build-wheels:
     name: Build wheels
@@ -35,17 +34,32 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v6
-        with:
-          submodules: "recursive"
       - name: Build wheels
         run: |
           pipx run cibuildwheel
         env:
           CIBW_TEST_COMMAND: "pytest -vv {project}"
           CIBW_TEST_REQUIRES: pytest
-          CIBW_SKIP: "*_i686 *-macosx_x86_64"
+          CIBW_SKIP: "*_i686 *-macosx_x86_64 *-musllinux_*"
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "cp -r /project/extern/topcom/external/lib/* /lib && auditwheel repair -w {dest_dir} {wheel}"
+          CIBW_BEFORE_ALL: >
+            curl -L https://micro.mamba.pm/api/micromamba/$(uname -s | tr A-Z a-z)-$(uname -m)/latest |
+            tar -xvj bin/micromamba &&
+            ./bin/micromamba create -y -n buildenv -c conda-forge
+            c-compiler
+            cxx-compiler
+            eigen
+            cgal
+            gmp
+            libboost
+            cddlib
+            cmake
+          CIBW_ENVIRONMENT: >
+            PATH=$PWD/bin:$PATH
+            CONDA_PREFIX=$PWD/micromamba/envs/buildenv
+            CMAKE_PREFIX_PATH=$PWD/micromamba/envs/buildenv
+            LD_LIBRARY_PATH=$PWD/micromamba/envs/buildenv/lib
+            DYLD_LIBRARY_PATH=$PWD/micromamba/envs/buildenv/lib
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
