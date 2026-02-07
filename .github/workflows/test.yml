@@ -21,21 +21,31 @@ jobs:
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14]
         python-version: ["3.9", "3.14"]
+    # Required for miniconda to activate conda
+    defaults:
+      run:
+        shell: bash -l {0}
     steps:
       - name: Check out repo
         uses: actions/checkout@v6
+      - name: Get micromamba
+        uses: mamba-org/setup-micromamba@v2
         with:
-          submodules: "recursive"
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+          environment-name: test-env
+          init-shell: bash
+          create-args: >-
+            python=${{ matrix.python-version }}
+            c-compiler
+            cxx-compiler
+            eigen
+            cgal
+            gmp
+            libboost
+            cmake
       - name: Pip install the package
         run: python -m pip -v install .[test]
       - name: Run pytest
         run: |
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/extern/topcom/external/lib/
           pytest -vv
 
   check:
