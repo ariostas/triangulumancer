@@ -10,7 +10,7 @@ Triangulation
 triangulate_placing(triangulumancer::PointConfiguration const &pc);
 
 Triangulation
-triangulate_placing(triangulumancer::VectorConfiguration const &pc);
+triangulate_placing(triangulumancer::VectorConfiguration const &vc);
 
 Triangulation triangulate_fine(triangulumancer::PointConfiguration const &pc);
 // Triangulation triangulate_fine(triangulumancer::VectorConfiguration const
