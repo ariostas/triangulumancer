@@ -40,26 +40,31 @@ jobs:
         env:
           CIBW_TEST_COMMAND: "pytest -vv {project}"
           CIBW_TEST_REQUIRES: pytest
-          CIBW_SKIP: "*_i686 *-macosx_x86_64 *-musllinux_*"
+          CIBW_SKIP: "*_i686 *-macosx_x86_64"
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_BEFORE_ALL: >
-            MM_URL="https://micro.mamba.pm/api/micromamba/${{ matrix.os == 'ubuntu-24.04' && 'linux-64' || ( matrix.os == 'ubuntu-24.04-arm' && 'linux-aarch64' || 'osx-arm64' ) }}/latest";
-            curl -Ls $MM_URL | tar -xvj bin/micromamba &&
-            ./bin/micromamba create -y -n buildenv -c conda-forge
-            c-compiler
-            cxx-compiler
-            eigen
-            cgal
-            gmp
-            libboost
-            cddlib
-            cmake
-          CIBW_ENVIRONMENT: >
-            PATH=$PWD/bin:$PATH
-            CONDA_PREFIX=$PWD/micromamba/envs/buildenv
-            CMAKE_PREFIX_PATH=$PWD/micromamba/envs/buildenv
-            LD_LIBRARY_PATH=$PWD/micromamba/envs/buildenv/lib
-            DYLD_LIBRARY_PATH=$PWD/micromamba/envs/buildenv/lib
+          CIBW_BEFORE_ALL_LINUX: >
+            yum install -y
+              cmake
+              boost-devel
+              eigen3-devel
+              gmp-devel
+              mpfr-devel
+              CGAL-devel &&
+            curl -LO https://github.com/cddlib/cddlib/releases/download/0.94n/cddlib-0.94n.tar.gz &&
+            tar xf cddlib-0.94n.tar.gz &&
+            cd cddlib-0.94n &&
+            ./configure --prefix=/usr/local &&
+            make -j && make install &&
+            cd ..
+          CIBW_BEFORE_ALL_MACOS: >
+            brew install
+              cmake
+              boost
+              eigen
+              gmp
+              mpfr
+              cgal
+              cddlib
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
