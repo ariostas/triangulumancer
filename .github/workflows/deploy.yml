@@ -44,12 +44,12 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_LINUX: >
             yum install -y
-              cmake
-              boost-devel
-              eigen3-devel
-              gmp-devel
-              mpfr-devel
-              CGAL-devel &&
+            cmake
+            boost-devel
+            eigen3-devel
+            gmp-devel
+            mpfr-devel
+            CGAL-devel &&
             curl -LO https://github.com/cddlib/cddlib/releases/download/0.94n/cddlib-0.94n.tar.gz &&
             tar xf cddlib-0.94n.tar.gz &&
             cd cddlib-0.94n &&
@@ -58,13 +58,13 @@ jobs:
             cd ..
           CIBW_BEFORE_ALL_MACOS: >
             brew install
-              cmake
-              boost
-              eigen
-              gmp
-              mpfr
-              cgal
-              cddlib
+            cmake
+            boost
+            eigen
+            gmp
+            mpfr
+            cgal
+            cddlib
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
