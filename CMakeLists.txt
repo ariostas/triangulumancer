@@ -23,7 +23,7 @@ if(DEFINED ENV{CONDA_PREFIX})
 endif()
 
 # Boost (headers only)
-find_package(Boost CONFIG REQUIRED)
+find_package(Boost REQUIRED)
 
 # CGAL
 set(CGAL_DISABLE_GMP ON)
