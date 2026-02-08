@@ -40,7 +40,7 @@ jobs:
         env:
           CIBW_TEST_COMMAND: "pytest -vv {project}"
           CIBW_TEST_REQUIRES: pytest
-          CIBW_SKIP: "*_i686 *-macosx_x86_64"
+          CIBW_SKIP: "*_i686 *-macosx_x86_64 *-musllinux_*"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_LINUX: >
             yum install -y
