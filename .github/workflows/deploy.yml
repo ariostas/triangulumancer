@@ -11,20 +11,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Disabled until CMakeLists.txt is updated to download everything it needs
-  # make-sdist:
-  #   name: Make SDist
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #       with:
-  #         submodules: "recursive"
-  #     - name: Build SDist
-  #       run: pipx run build --sdist
-  #     - uses: actions/upload-artifact@v6
-  #       with:
-  #         name: cibw-sdist
-  #         path: dist/*.tar.gz
+  make-sdist:
+    name: Make SDist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: "recursive"
+      - name: Build SDist
+        run: pipx run build --sdist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
 
   build-wheels:
     name: Build wheels
@@ -35,17 +34,38 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v6
-        with:
-          submodules: "recursive"
       - name: Build wheels
         run: |
           pipx run cibuildwheel
         env:
           CIBW_TEST_COMMAND: "pytest -vv {project}"
           CIBW_TEST_REQUIRES: pytest
-          CIBW_SKIP: "*_i686 *-macosx_x86_64"
+          CIBW_SKIP: "*_i686 *-macosx_x86_64 *-musllinux_*"
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "cp -r /project/extern/topcom/external/lib/* /lib && auditwheel repair -w {dest_dir} {wheel}"
+          CIBW_BEFORE_ALL_LINUX: >
+            yum install -y
+            cmake
+            boost-devel
+            eigen3-devel
+            gmp-devel
+            mpfr-devel
+            CGAL-devel &&
+            curl -LO https://github.com/cddlib/cddlib/releases/download/0.94n/cddlib-0.94n.tar.gz &&
+            tar xf cddlib-0.94n.tar.gz &&
+            cd cddlib-0.94n &&
+            ./configure --prefix=/usr/local &&
+            make -j && make install &&
+            cd ..
+          CIBW_BEFORE_ALL_MACOS: >
+            brew install
+            cmake
+            boost
+            eigen
+            gmp
+            mpfr
+            cgal
+            cddlib
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
