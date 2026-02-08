@@ -65,6 +65,7 @@ jobs:
             mpfr
             cgal
             cddlib
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
