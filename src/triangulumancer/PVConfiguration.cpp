@@ -95,7 +95,7 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
   if (pvc_data->is_locked) {
     std::string msg = (is_pc ? "Point" : "Vector") +
                       std::string(" configuration is locked, so more ") +
-                      (is_pc ? "points" : "vectors") + " can be added";
+                      (is_pc ? "points" : "vectors") + " cannot be added";
     throw std::runtime_error(msg);
   }
   pybind11::buffer_info buf = matrix.request();
