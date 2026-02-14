@@ -81,6 +81,7 @@ public:
 
   // Aliases
   size_t n_points() const;
+  pybind11::array_t<int64_t> points() const;
   void add_point(pybind11::array_t<int64_t> const &matrix);
 };
 
@@ -93,6 +94,7 @@ public:
 
   // Aliases
   size_t n_vectors() const;
+  pybind11::array_t<int64_t> vectors() const;
   void add_vector(pybind11::array_t<int64_t> const &matrix);
 };
 
