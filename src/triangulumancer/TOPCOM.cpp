@@ -75,7 +75,7 @@ void validate_configuration(topcom::PointConfiguration const &points) {
   }
 }
 
-Triangulation triangulate_placing(PointConfiguration const &pvc) {
+Triangulation triangulate_placing(PVConfiguration const &pvc) {
   topcom::PointConfiguration points = pvc.pvc_data->topcom_pc;
 
   validate_configuration(points);
