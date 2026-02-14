@@ -78,6 +78,10 @@ public:
   PointConfiguration();
   PointConfiguration(std::shared_ptr<PVConfigurationData> pvc_data_in);
   PointConfiguration(pybind11::array_t<int64_t> const &matrix);
+
+  // Aliases
+  size_t n_points() const;
+  void add_point(pybind11::array_t<int64_t> const &matrix);
 };
 
 class VectorConfiguration : public PVConfiguration {
@@ -86,6 +90,10 @@ public:
   VectorConfiguration();
   VectorConfiguration(std::shared_ptr<PVConfigurationData> pvc_data_in);
   VectorConfiguration(pybind11::array_t<int64_t> const &matrix);
+
+  // Aliases
+  size_t n_vectors() const;
+  void add_vector(pybind11::array_t<int64_t> const &matrix);
 };
 
 } // namespace triangulumancer

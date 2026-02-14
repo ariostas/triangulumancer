@@ -199,6 +199,12 @@ PointConfiguration::PointConfiguration(
 PointConfiguration::PointConfiguration(pybind11::array_t<int64_t> const &matrix)
     : PVConfiguration(matrix, ConfigurationType::Point) {}
 
+size_t PointConfiguration::n_points() const { return n_pv(); }
+
+void PointConfiguration::add_point(pybind11::array_t<int64_t> const &matrix) {
+  add_pv(matrix);
+}
+
 // VectorConfiguration
 
 VectorConfiguration::VectorConfiguration()
@@ -216,3 +222,9 @@ VectorConfiguration::VectorConfiguration(
 VectorConfiguration::VectorConfiguration(
     pybind11::array_t<int64_t> const &matrix)
     : PVConfiguration(matrix, ConfigurationType::Vector) {}
+
+size_t VectorConfiguration::n_vectors() const { return n_pv(); }
+
+void VectorConfiguration::add_vector(pybind11::array_t<int64_t> const &matrix) {
+  add_pv(matrix);
+}
