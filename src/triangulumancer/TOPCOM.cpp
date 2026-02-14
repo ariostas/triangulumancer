@@ -12,15 +12,17 @@
 namespace triangulumancer::top {
 
 Triangulation
-simplicial_complex_to_triangulation(PointConfiguration const &pc,
+simplicial_complex_to_triangulation(PVConfiguration const &pvc,
                                     topcom::SimplicialComplex const &sc) {
-  size_t dim = pc.dim();
+  size_t dim = pvc.dim();
   // std::difference doesn't work with these iterators
   size_t n_simplices = 0;
   for (auto it = sc.begin(); it != sc.end(); it++, n_simplices++) {
   }
 
-  auto simplices = pybind11::array_t<int64_t>({n_simplices, dim + 1});
+  bool is_pc = pvc.pvc_data->config_type == ConfigurationType::Point;
+
+  auto simplices = pybind11::array_t<int64_t>({n_simplices, dim + 1 * is_pc});
   auto simplices_buf = simplices.mutable_data();
 
   unsigned int simplex_idx = 0;
@@ -28,35 +30,11 @@ simplicial_complex_to_triangulation(PointConfiguration const &pc,
     unsigned int dim_idx = 0;
     for (auto simp_it = sc_it->begin(); simp_it != sc_it->end();
          simp_it++, dim_idx++) {
-      simplices_buf[simplex_idx * (dim + 1) + dim_idx] = *simp_it;
+      simplices_buf[simplex_idx * (dim + 1 * is_pc) + dim_idx] = *simp_it;
     }
   }
 
-  return Triangulation(pc, simplices);
-}
-
-Triangulation
-simplicial_complex_to_triangulation(VectorConfiguration const &vc,
-                                    topcom::SimplicialComplex const &sc) {
-  size_t dim = vc.dim();
-  // std::difference doesn't work with these iterators
-  size_t n_simplices = 0;
-  for (auto it = sc.begin(); it != sc.end(); it++, n_simplices++) {
-  }
-
-  auto simplices = pybind11::array_t<int64_t>({n_simplices, dim});
-  auto simplices_buf = simplices.mutable_data();
-
-  unsigned int simplex_idx = 0;
-  for (auto sc_it = sc.begin(); sc_it != sc.end(); sc_it++, simplex_idx++) {
-    unsigned int dim_idx = 0;
-    for (auto simp_it = sc_it->begin(); simp_it != sc_it->end();
-         simp_it++, dim_idx++) {
-      simplices_buf[simplex_idx * dim + dim_idx] = *simp_it;
-    }
-  }
-
-  return Triangulation(vc, simplices);
+  return Triangulation(pvc, simplices);
 }
 
 topcom::SimplicialComplex
@@ -64,8 +42,10 @@ triangulation_to_simplicial_complex(Triangulation const &t) {
   auto simplices = t.simplices();
   auto simplices_buf = simplices.data();
 
+  bool is_pc = t.pvc.pvc_data->config_type == ConfigurationType::Point;
+
   size_t n_simplices = t.n_simplices();
-  size_t dim = t.dim() + 1;
+  size_t dim = t.dim() + 1 * is_pc;
 
   topcom::SimplicialComplex sc;
   topcom::Simplex simp;
@@ -95,45 +75,35 @@ void validate_configuration(topcom::PointConfiguration const &points) {
   }
 }
 
-Triangulation triangulate_placing(PointConfiguration const &pc) {
-  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+Triangulation triangulate_placing(PointConfiguration const &pvc) {
+  topcom::PointConfiguration points = pvc.pvc_data->topcom_pc;
 
   validate_configuration(points);
 
   topcom::Chirotope chiro(points, false);
   topcom::PlacingTriang t(chiro);
 
-  return simplicial_complex_to_triangulation(pc, t);
+  return simplicial_complex_to_triangulation(pvc, t);
 }
 
-Triangulation triangulate_placing(VectorConfiguration const &vc) {
-  topcom::PointConfiguration vectors = vc.vc_data->topcom_vc;
-
-  validate_configuration(vectors);
-
-  topcom::Chirotope chiro(vectors, false);
-  topcom::PlacingTriang t(chiro);
-
-  return simplicial_complex_to_triangulation(vc, t);
-}
-
-Triangulation triangulate_fine(PointConfiguration const &pc) {
-  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+Triangulation triangulate_fine(PVConfiguration const &pvc) {
+  topcom::PointConfiguration points = pvc.pvc_data->topcom_pc;
 
   validate_configuration(points);
 
   topcom::Chirotope chiro(points, false);
   topcom::FineTriang t(chiro);
 
-  return simplicial_complex_to_triangulation(pc, t);
+  return simplicial_complex_to_triangulation(pvc, t);
 }
 
 std::vector<Triangulation> find_neighbors(Triangulation const &t) {
   std::vector<Triangulation> neighbors;
 
   topcom::PointConfiguration points;
-  if (t.isPC) {
-    points = t.pc.pc_data->topcom_pc;
+  bool is_pc = t.pvc.pvc_data->config_type == ConfigurationType::Point;
+  if (is_pc) {
+    points = t.pvc.pvc_data->topcom_pc;
   } else {
     throw std::runtime_error(
         "Neighbors of vector configurations are not yet supported");
@@ -160,23 +130,17 @@ std::vector<Triangulation> find_neighbors(Triangulation const &t) {
     auto fl = topcom::Flip(tn, t_it->first);
     auto sc =
         static_cast<topcom::SimplicialComplex>(topcom::TriangNode(0, tn, fl));
-    if (t.isPC) {
-      neighbors.push_back(simplicial_complex_to_triangulation(t.pc, sc));
-    } else {
-      throw std::runtime_error(
-          "Neighbors of Vector Configurations are not yet supported");
-    }
+    neighbors.push_back(simplicial_complex_to_triangulation(t.pvc, sc));
   }
 
   return neighbors;
 }
 
 std::vector<Triangulation>
-find_all_connected_triangulations(PointConfiguration const &pc,
-                                  bool only_fine) {
+find_all_connected_triangulations(PVConfiguration const &pvc, bool only_fine) {
   std::vector<Triangulation> all_triangs;
 
-  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+  topcom::PointConfiguration points = pvc.pvc_data->topcom_pc;
 
   validate_configuration(points);
 
@@ -194,7 +158,7 @@ find_all_connected_triangulations(PointConfiguration const &pc,
   topcom::Volumes *voltableptr = nullptr;
 
   auto callback = [&](topcom::SimplicialComplex sc) {
-    all_triangs.push_back(simplicial_complex_to_triangulation(pc, sc));
+    all_triangs.push_back(simplicial_complex_to_triangulation(pvc, sc));
   };
 
   topcom::SymmetricFlipGraph sfg(no, rank, points, chiro, symmetries, seed,
@@ -204,11 +168,11 @@ find_all_connected_triangulations(PointConfiguration const &pc,
   return all_triangs;
 }
 
-std::vector<Triangulation> find_all_triangulations(PointConfiguration const &pc,
+std::vector<Triangulation> find_all_triangulations(PVConfiguration const &pvc,
                                                    bool only_fine) {
   std::vector<Triangulation> all_triangs;
 
-  topcom::PointConfiguration points = pc.pc_data->topcom_pc;
+  topcom::PointConfiguration points = pvc.pvc_data->topcom_pc;
 
   validate_configuration(points);
 
@@ -219,35 +183,11 @@ std::vector<Triangulation> find_all_triangulations(PointConfiguration const &pc,
   topcom::SymmetryGroup symmetries(no);
 
   auto callback = [&](topcom::SimplicialComplex sc) {
-    all_triangs.push_back(simplicial_complex_to_triangulation(pc, sc));
+    all_triangs.push_back(simplicial_complex_to_triangulation(pvc, sc));
   };
 
   topcom::SymmetricExtensionGraphMaster segm(
       no, rank, points, chiro, symmetries, true, only_fine, false, callback);
-
-  return all_triangs;
-}
-
-std::vector<Triangulation>
-find_all_triangulations(VectorConfiguration const &vc, bool only_fine) {
-  std::vector<Triangulation> all_triangs;
-
-  topcom::PointConfiguration vectors = vc.vc_data->topcom_vc;
-
-  validate_configuration(vectors);
-
-  topcom::Chirotope chiro(vectors, false);
-
-  size_t no(chiro.no());
-  size_t rank(chiro.rank());
-  topcom::SymmetryGroup symmetries(no);
-
-  auto callback = [&](topcom::SimplicialComplex sc) {
-    all_triangs.push_back(simplicial_complex_to_triangulation(vc, sc));
-  };
-
-  topcom::SymmetricExtensionGraphMaster segm(
-      no, rank, vectors, chiro, symmetries, true, only_fine, false, callback);
 
   return all_triangs;
 }

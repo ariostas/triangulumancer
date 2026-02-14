@@ -23,10 +23,10 @@ Triangulation triangulate_cgal(PointConfiguration const &pc,
   RK traits = RK();
   const Ccd ccd = traits.compute_coordinate_d_object();
 
-  auto points = pc.points();
+  auto points = pc.pv();
   auto points_buf = points.data();
 
-  auto n_points = pc.n_points();
+  auto n_points = pc.n_pv();
   auto dim = pc.dim();
 
   if (n_points != params.size()) {
@@ -132,7 +132,7 @@ Triangulation triangulate_cgal_infer_dim(PointConfiguration const &pc,
 }
 
 Triangulation triangulate_delaunay(PointConfiguration const &pc) {
-  auto weights = std::vector(pc.n_points(), 0.);
+  auto weights = std::vector(pc.n_pv(), 0.);
   return triangulate_cgal_infer_dim(pc, weights, false);
 }
 

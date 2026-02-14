@@ -1,40 +1,22 @@
 #include "triangulumancer/Triangulation.hpp"
-#include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/PVConfiguration.hpp"
 #include "triangulumancer/TOPCOM.hpp"
-#include "triangulumancer/VectorConfiguration.hpp"
 
 using namespace triangulumancer;
 
-Triangulation::Triangulation(std::shared_ptr<PointConfigurationData> pc_data_in,
+Triangulation::Triangulation(std::shared_ptr<PVConfigurationData> pvc_data_in,
                              pybind11::array_t<int64_t> simplices_in)
-    : isPC(true), pc(pc_data_in), m_simplices(simplices_in) {
-  if (!pc.pc_data->is_locked) {
-    pc.pc_data->is_locked = true;
+    : pvc(pvc_data_in), m_simplices(simplices_in) {
+  if (!pvc.pvc_data->is_locked) {
+    pvc.pvc_data->is_locked = true;
   }
 }
 
-Triangulation::Triangulation(PointConfiguration const &pc_in,
+Triangulation::Triangulation(PVConfiguration const &pvc_in,
                              pybind11::array_t<int64_t> simplices_in)
-    : isPC(true), pc(pc_in), m_simplices(simplices_in) {
-  if (!pc.pc_data->is_locked) {
-    pc.pc_data->is_locked = true;
-  }
-}
-
-Triangulation::Triangulation(
-    std::shared_ptr<VectorConfigurationData> vc_data_in,
-    pybind11::array_t<int64_t> simplices_in)
-    : isPC(false), vc(vc_data_in), m_simplices(simplices_in) {
-  if (!vc.vc_data->is_locked) {
-    vc.vc_data->is_locked = true;
-  }
-}
-
-Triangulation::Triangulation(VectorConfiguration const &vc_in,
-                             pybind11::array_t<int64_t> simplices_in)
-    : isPC(false), vc(vc_in), m_simplices(simplices_in) {
-  if (!vc.vc_data->is_locked) {
-    vc.vc_data->is_locked = true;
+    : pvc(pvc_in), m_simplices(simplices_in) {
+  if (!pvc.pvc_data->is_locked) {
+    pvc.pvc_data->is_locked = true;
   }
 }
 
@@ -43,17 +25,18 @@ size_t Triangulation::n_simplices() const {
   return buf.shape[0];
 }
 
-size_t Triangulation::dim() const { return pc.dim(); }
+size_t Triangulation::dim() const { return pvc.dim(); }
 
 std::string Triangulation::repr() const {
   std::string msg;
   msg = "A triangulation with " + std::to_string(n_simplices()) +
         " simplices of a ";
-  if (isPC) {
-    msg = msg + "point configuration with " + std::to_string(pc.n_points()) +
+  bool is_pc = pvc.pvc_data->config_type == ConfigurationType::Point;
+  if (is_pc) {
+    msg = msg + "point configuration with " + std::to_string(pvc.n_pv()) +
           " points";
   } else {
-    msg = msg + "vector configuration with " + std::to_string(vc.n_vectors()) +
+    msg = msg + "vector configuration with " + std::to_string(pvc.n_pv()) +
           " vectors";
   }
   return msg;

@@ -1,8 +1,7 @@
 #include <pybind11/pybind11.h>
 
-#include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/PVConfiguration.hpp"
 #include "triangulumancer/Triangulation.hpp"
-#include "triangulumancer/VectorConfiguration.hpp"
 
 using namespace triangulumancer;
 
@@ -11,12 +10,12 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
   pybind11::class_<PointConfiguration>(m, "PointConfiguration")
       .def(pybind11::init<>())
       .def(pybind11::init<pybind11::array_t<int> const &>())
-      .def("n_points", &PointConfiguration::n_points)
+      .def("n_points", &PointConfiguration::n_pv)
       .def("dim", &PointConfiguration::dim)
       .def("__repr__", &PointConfiguration::repr)
-      .def("points", &PointConfiguration::points)
-      .def("add_point", &PointConfiguration::add_points)
-      .def("add_points", &PointConfiguration::add_points)
+      .def("points", &PointConfiguration::pv)
+      .def("add_point", &PointConfiguration::add_pv)
+      .def("add_points", &PointConfiguration::add_pv)
       .def("placing_triangulation", &PointConfiguration::placing_triangulation)
       .def("fine_triangulation", &PointConfiguration::fine_triangulation)
       .def("all_connected_triangulations",
@@ -33,12 +32,12 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
   pybind11::class_<VectorConfiguration>(m, "VectorConfiguration")
       .def(pybind11::init<>())
       .def(pybind11::init<pybind11::array_t<int> const &>())
-      .def("n_vectors", &VectorConfiguration::n_vectors)
+      .def("n_vectors", &VectorConfiguration::n_pv)
       .def("dim", &VectorConfiguration::dim)
       .def("__repr__", &VectorConfiguration::repr)
-      .def("vectors", &VectorConfiguration::vectors)
-      .def("add_vector", &VectorConfiguration::add_vectors)
-      .def("add_vectors", &VectorConfiguration::add_vectors)
+      .def("vectors", &VectorConfiguration::pv)
+      .def("add_vector", &VectorConfiguration::add_pv)
+      .def("add_vectors", &VectorConfiguration::add_pv)
       .def("placing_triangulation", &VectorConfiguration::placing_triangulation)
       //.def("fine_triangulation", &VectorConfiguration::fine_triangulation)
       //.def("all_connected_triangulations",
