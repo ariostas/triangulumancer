@@ -46,6 +46,10 @@ pybind11::array_t<int64_t> Triangulation::simplices() const {
   return m_simplices;
 }
 
+std::vector<Flip> Triangulation::flips() const {
+  return top::find_flips(*this);
+}
+
 std::vector<Triangulation> Triangulation::neighbors() const {
   return top::find_neighbors(*this);
 }

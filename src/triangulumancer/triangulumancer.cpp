@@ -1,5 +1,6 @@
 #include <pybind11/pybind11.h>
 
+#include "triangulumancer/Flip.hpp"
 #include "triangulumancer/PVConfiguration.hpp"
 #include "triangulumancer/Triangulation.hpp"
 
@@ -52,5 +53,11 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def("dim", &Triangulation::dim)
       .def("__repr__", &Triangulation::repr)
       .def("simplices", &Triangulation::simplices)
+      .def("flips", &Triangulation::flips)
+      .def("bistellar_flips", &Triangulation::flips)
       .def("neighbors", &Triangulation::neighbors);
+  pybind11::class_<Flip>(m, "Flip")
+      .def_readonly("parent_triangulation", &Flip::parent_triangulation)
+      .def_readonly("pre", &Flip::pre)
+      .def_readonly("post", &Flip::post);
 }
