@@ -57,6 +57,7 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def("bistellar_flips", &Triangulation::flips)
       .def("neighbors", &Triangulation::neighbors);
   pybind11::class_<Flip>(m, "Flip")
+      .def("__repr__", &Flip::repr)
       .def_readonly("parent_triangulation", &Flip::parent_triangulation)
       .def_readonly("pre", &Flip::pre)
       .def_readonly("post", &Flip::post);
