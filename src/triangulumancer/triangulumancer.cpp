@@ -1,8 +1,7 @@
 #include <pybind11/pybind11.h>
 
-#include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/PVConfiguration.hpp"
 #include "triangulumancer/Triangulation.hpp"
-#include "triangulumancer/VectorConfiguration.hpp"
 
 using namespace triangulumancer;
 
@@ -15,8 +14,8 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def("dim", &PointConfiguration::dim)
       .def("__repr__", &PointConfiguration::repr)
       .def("points", &PointConfiguration::points)
-      .def("add_point", &PointConfiguration::add_points)
-      .def("add_points", &PointConfiguration::add_points)
+      .def("add_point", &PointConfiguration::add_point)
+      .def("add_points", &PointConfiguration::add_point)
       .def("placing_triangulation", &PointConfiguration::placing_triangulation)
       .def("fine_triangulation", &PointConfiguration::fine_triangulation)
       .def("all_connected_triangulations",
@@ -37,13 +36,13 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def("dim", &VectorConfiguration::dim)
       .def("__repr__", &VectorConfiguration::repr)
       .def("vectors", &VectorConfiguration::vectors)
-      .def("add_vector", &VectorConfiguration::add_vectors)
-      .def("add_vectors", &VectorConfiguration::add_vectors)
+      .def("add_vector", &VectorConfiguration::add_vector)
+      .def("add_vectors", &VectorConfiguration::add_vector)
       .def("placing_triangulation", &VectorConfiguration::placing_triangulation)
-      //.def("fine_triangulation", &VectorConfiguration::fine_triangulation)
-      //.def("all_connected_triangulations",
-      //     &VectorConfiguration::all_connected_triangulations,
-      //     pybind11::arg("only_fine") = false)
+      .def("fine_triangulation", &VectorConfiguration::fine_triangulation)
+      .def("all_connected_triangulations",
+           &VectorConfiguration::all_connected_triangulations,
+           pybind11::arg("only_fine") = false)
       .def("all_triangulations", &VectorConfiguration::all_triangulations,
            pybind11::arg("only_fine") = false);
   pybind11::class_<Triangulation>(m, "Triangulation")

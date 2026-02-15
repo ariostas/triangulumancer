@@ -37,8 +37,7 @@ find_package(pybind11 CONFIG REQUIRED)
 
 set(TRIANGULUMANCER_SOURCES
     src/triangulumancer/triangulumancer.cpp
-    src/triangulumancer/PointConfiguration.cpp
-    src/triangulumancer/VectorConfiguration.cpp
+    src/triangulumancer/PVConfiguration.cpp
     src/triangulumancer/Triangulation.cpp
     src/triangulumancer/CGAL.cpp
     src/triangulumancer/TOPCOM.cpp)

@@ -15,10 +15,11 @@ pip install triangulumancer
 
 If you want to tweak compilation parameters or anything else, you can clone the repository and build the wheel yourself.
 ```bash
-git clone --recurse-submodules https://github.com/ariostas/triangulumancer.git
+git clone https://github.com/ariostas/triangulumancer.git
 cd triangulumancer
 pip install .
-# You might need to set your LD_LIBRARY_PATH to include extern/topcom/external/lib.
+# If you need to install the dependencies yourself, you can do so with
+# conda install -c conda-forge c-compiler cxx-compiler eigen cgal gmp libboost cddlib cmake
 ```
 
 ## Usage
@@ -60,6 +61,10 @@ A triangulation with 8 simplices of a point configuration with 9 points
 64
 ```
 
+There is equivalent functionality for vector configurations, but it is not fully complete and has not been tested as much, so we have not included it in the example above.
+
+Please open an issue if have any issues or want to see more functionality. Pull requests are also welcome!
+
 ## License
 
-All original `triangulumancer` code is distributed under the [GNU General Public License version 3](https://www.gnu.org/licenses/gpl-3.0.txt). The libraries it depends on, which can be found in the `extern` directory, are redistributed under their corresponding licenses.
+All original `triangulumancer` code is distributed under the [GNU General Public License version 3](https://www.gnu.org/licenses/gpl-3.0.txt). It directly depends on [CGAL](https://www.cgal.org/) and [TOPCOM](https://www.wm.uni-bayreuth.de/de/team/rambau_joerg/TOPCOM/). Since packaged versions of `triangulumancer` include CGAL and TOPCOM, the license of those packages also applies. Please refer to the CGAL and TOPCOM websites for more information.

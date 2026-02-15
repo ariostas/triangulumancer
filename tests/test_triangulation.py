@@ -97,6 +97,8 @@ def test_topcom_square_vc():
     t = vc.placing_triangulation()
     assert len(t.simplices()) == 6  # simps: 01, 12, 23, 34, 45, 50
 
+    assert len(t.neighbors()) == 6
+
     assert len(vc.all_triangulations()) == 131
     assert (
         len(vc.all_triangulations(True)) == 1

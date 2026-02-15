@@ -7,28 +7,21 @@
 #include <pybind11/stl.h>
 #include <string>
 
-#include "triangulumancer/PointConfiguration.hpp"
-#include "triangulumancer/VectorConfiguration.hpp"
+#include "triangulumancer/PVConfiguration.hpp"
 
 namespace triangulumancer {
 
 struct Triangulation {
   // This is only a light wrapper
-  PointConfiguration pc;
-  VectorConfiguration vc;
-  bool isPC;
+  PVConfiguration pvc;
 
   pybind11::array_t<int64_t> m_simplices;
 
   // Constructors
   Triangulation() = delete;
-  Triangulation(std::shared_ptr<PointConfigurationData> pc_data_in,
+  Triangulation(std::shared_ptr<PVConfigurationData> pvc_data_in,
                 pybind11::array_t<int64_t> simplices_in);
-  Triangulation(PointConfiguration const &pc,
-                pybind11::array_t<int64_t> simplices_in);
-  Triangulation(std::shared_ptr<VectorConfigurationData> vc_data_in,
-                pybind11::array_t<int64_t> simplices_in);
-  Triangulation(VectorConfiguration const &vc,
+  Triangulation(PVConfiguration const &pvc,
                 pybind11::array_t<int64_t> simplices_in);
 
   // Basic info

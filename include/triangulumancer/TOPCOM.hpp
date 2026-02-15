@@ -1,30 +1,21 @@
 #pragma once
 
-#include "triangulumancer/PointConfiguration.hpp"
+#include "triangulumancer/PVConfiguration.hpp"
 #include "triangulumancer/Triangulation.hpp"
-#include "triangulumancer/VectorConfiguration.hpp"
 
 namespace triangulumancer::top {
 
-Triangulation
-triangulate_placing(triangulumancer::PointConfiguration const &pc);
+Triangulation triangulate_placing(triangulumancer::PVConfiguration const &pvc);
 
-Triangulation
-triangulate_placing(triangulumancer::VectorConfiguration const &vc);
-
-Triangulation triangulate_fine(triangulumancer::PointConfiguration const &pc);
-// Triangulation triangulate_fine(triangulumancer::VectorConfiguration const
-// &vc);
+Triangulation triangulate_fine(triangulumancer::PVConfiguration const &pvc);
 
 std::vector<Triangulation> find_neighbors(Triangulation const &t);
 
 std::vector<Triangulation>
-find_all_connected_triangulations(PointConfiguration const &pc,
+find_all_connected_triangulations(PVConfiguration const &pc,
                                   bool only_fine = false);
 
-std::vector<Triangulation> find_all_triangulations(PointConfiguration const &pc,
+std::vector<Triangulation> find_all_triangulations(PVConfiguration const &pvc,
                                                    bool only_fine = false);
-std::vector<Triangulation>
-find_all_triangulations(VectorConfiguration const &pc, bool only_fine = false);
 
 } // namespace triangulumancer::top
