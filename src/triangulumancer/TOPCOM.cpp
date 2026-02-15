@@ -100,18 +100,11 @@ Triangulation triangulate_fine(PVConfiguration const &pvc) {
 std::vector<Triangulation> find_neighbors(Triangulation const &t) {
   std::vector<Triangulation> neighbors;
 
-  topcom::PointConfiguration points;
-  bool is_pc = t.pvc.pvc_data->config_type == ConfigurationType::Point;
-  if (is_pc) {
-    points = t.pvc.pvc_data->topcom_pc;
-  } else {
-    throw std::runtime_error(
-        "Neighbors of vector configurations are not yet supported");
-  }
+  topcom::PointConfiguration pc = t.pvc.pvc_data->topcom_pc;
 
-  validate_configuration(points);
+  validate_configuration(pc);
 
-  topcom::Chirotope chiro(points, false);
+  topcom::Chirotope chiro(pc, false);
 
   size_t no(chiro.no());
   size_t rank(chiro.rank());
