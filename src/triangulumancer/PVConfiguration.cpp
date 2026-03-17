@@ -102,6 +102,9 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
   size_t d = dim();
   int64_t *ptr = static_cast<int64_t *>(buf.ptr);
   if (buf.ndim == 1) {
+    if (d == 0) {
+      d = buf.shape[0];
+    }
     if (buf.shape[0] != d) {
       throw std::runtime_error("Dimension mismatch");
     }
@@ -115,17 +118,20 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
     pvc_data->topcom_pc.push_back(std::move(v));
     pvc_data->has_new_pv = true;
   } else if (buf.ndim == 2) {
-    size_t n_pv = buf.shape[0];
+    if (d == 0) {
+      d = buf.shape[1];
+    }
+    size_t n_pv_ = buf.shape[0];
     if (buf.shape[1] != d) {
       throw std::runtime_error("Dimension mismatch");
     }
-    for (size_t i = 0; i < n_pv; i++) {
+    for (size_t i = 0; i < n_pv_; i++) {
       auto v = topcom::Vector(d + 1 * is_pc);
       for (size_t j = 0; j < d + 1 * is_pc; j++) {
         if (j == d) {
           v(j) = 1;
         } else {
-          v(j) = (signed long)ptr[i * n_pv + j];
+          v(j) = (signed long)ptr[i * d + j];
         }
       }
       pvc_data->topcom_pc.push_back(std::move(v));

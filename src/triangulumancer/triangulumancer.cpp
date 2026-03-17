@@ -9,7 +9,7 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
                 pybind11::multiple_interpreters::per_interpreter_gil()) {
   pybind11::class_<PointConfiguration>(m, "PointConfiguration")
       .def(pybind11::init<>())
-      .def(pybind11::init<pybind11::array_t<int> const &>())
+      .def(pybind11::init<pybind11::array_t<int64_t> const &>())
       .def("n_points", &PointConfiguration::n_points)
       .def("dim", &PointConfiguration::dim)
       .def("__repr__", &PointConfiguration::repr)
@@ -31,7 +31,7 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
            &PointConfiguration::delaunay_triangulation);
   pybind11::class_<VectorConfiguration>(m, "VectorConfiguration")
       .def(pybind11::init<>())
-      .def(pybind11::init<pybind11::array_t<int> const &>())
+      .def(pybind11::init<pybind11::array_t<int64_t> const &>())
       .def("n_vectors", &VectorConfiguration::n_vectors)
       .def("dim", &VectorConfiguration::dim)
       .def("__repr__", &VectorConfiguration::repr)
@@ -47,7 +47,7 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
            pybind11::arg("only_fine") = false);
   pybind11::class_<Triangulation>(m, "Triangulation")
       .def(pybind11::init<PointConfiguration const &,
-                          pybind11::array_t<int> const &>())
+                          pybind11::array_t<int64_t> const &>())
       .def("n_simplices", &Triangulation::n_simplices)
       .def("dim", &Triangulation::dim)
       .def("__repr__", &Triangulation::repr)
