@@ -46,3 +46,11 @@ def test_add_vectors():
 
     returned_vectors = vc.vectors()
     assert returned_vectors[-1].tolist() == [2, 2]
+
+    vc = VectorConfiguration()
+    vc.add_vector([2, 2])
+    assert vc.vectors().tolist() == [[2, 2]]
+
+    vc = VectorConfiguration()
+    vc.add_vectors([[1, 2], [3, 4]])
+    assert vc.vectors().tolist() == [[1, 2], [3, 4]]
