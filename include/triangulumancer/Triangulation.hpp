@@ -16,6 +16,7 @@ struct Triangulation {
   PVConfiguration pvc;
 
   pybind11::array_t<int64_t> m_simplices;
+
   // Constructors
   Triangulation() = delete;
   Triangulation(std::shared_ptr<PVConfigurationData> pvc_data_in,
