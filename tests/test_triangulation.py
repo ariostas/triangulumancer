@@ -48,7 +48,7 @@ def test_topcom_simplex():
     assert len(t.simplices) == 1
     assert set(t.simplices[0]) == {0, 1, 2}
 
-    assert len(t.neighbors) == 0
+    assert len(t.neighbors()) == 0
 
     t = p.fine_triangulation()
     assert len(t.simplices) == 1
@@ -68,7 +68,7 @@ def test_topcom_square():
     t = p.placing_triangulation()
     assert len(t.simplices) == 8
 
-    assert len(t.neighbors) == 6
+    assert len(t.neighbors()) == 6
 
     t = p.fine_triangulation()
     assert len(t.simplices) == 8
@@ -97,7 +97,7 @@ def test_topcom_square_vc():
     t = vc.placing_triangulation()
     assert len(t.simplices) == 6  # simps: 01, 12, 23, 34, 45, 50
 
-    assert len(t.neighbors) == 6
+    assert len(t.neighbors()) == 6
 
     assert len(vc.all_triangulations()) == 131
     assert (

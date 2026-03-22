@@ -16,8 +16,6 @@ struct Triangulation {
   PVConfiguration pvc;
 
   pybind11::array_t<int64_t> m_simplices;
-  mutable std::optional<std::vector<Triangulation>> m_neighbors;
-
   // Constructors
   Triangulation() = delete;
   Triangulation(std::shared_ptr<PVConfigurationData> pvc_data_in,
@@ -32,7 +30,7 @@ struct Triangulation {
   pybind11::array_t<int64_t> simplices() const;
 
   // TOPCOM functionality
-  std::vector<Triangulation> const &neighbors() const;
+  std::vector<Triangulation> neighbors() const;
 };
 
 } // namespace triangulumancer

@@ -52,5 +52,5 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def_property_readonly("dim", &Triangulation::dim)
       .def("__repr__", &Triangulation::repr)
       .def_property_readonly("simplices", &Triangulation::simplices)
-      .def_property_readonly("neighbors", &Triangulation::neighbors);
+      .def("neighbors", &Triangulation::neighbors);
 }

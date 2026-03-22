@@ -46,9 +46,6 @@ pybind11::array_t<int64_t> Triangulation::simplices() const {
   return m_simplices;
 }
 
-std::vector<Triangulation> const &Triangulation::neighbors() const {
-  if (!m_neighbors) {
-    m_neighbors = top::find_neighbors(*this);
-  }
-  return *m_neighbors;
+std::vector<Triangulation> Triangulation::neighbors() const {
+  return top::find_neighbors(*this);
 }
