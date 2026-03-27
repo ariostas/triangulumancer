@@ -44,7 +44,7 @@ struct PVConfigurationData {
 
   PVConfigurationData(ConfigurationType config_type_in);
   // Custom copy constructor: copies data but creates a fresh mutex.
-  PVConfigurationData(PVConfigurationData &pvc_data);
+  PVConfigurationData(PVConfigurationData const &pvc_data);
 };
 
 class PVConfiguration {

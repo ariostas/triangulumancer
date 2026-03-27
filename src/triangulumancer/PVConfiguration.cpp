@@ -10,7 +10,7 @@ using namespace triangulumancer;
 PVConfigurationData::PVConfigurationData(ConfigurationType config_type_in)
     : config_type(config_type_in), has_new_pv(false), is_locked(false) {};
 
-PVConfigurationData::PVConfigurationData(PVConfigurationData &pvc_data)
+PVConfigurationData::PVConfigurationData(PVConfigurationData const &pvc_data)
     : config_type(pvc_data.config_type) {
   std::lock_guard<std::recursive_mutex> lock(pvc_data.mtx);
   topcom_pc = pvc_data.topcom_pc;
