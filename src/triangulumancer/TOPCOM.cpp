@@ -97,9 +97,8 @@ Triangulation triangulate_fine(PVConfiguration const &pvc) {
   return simplicial_complex_to_triangulation(pvc, t);
 }
 
-std::vector<Flip> find_flips(Triangulation const &t) {
-  std::vector<Flip> flips;
-
+static std::pair<topcom::TriangNode, topcom::MarkedFlips>
+compute_triang_flips(Triangulation const &t) {
   topcom::PointConfiguration pc = t.pvc.pvc_data->topcom_pc;
 
   validate_configuration(pc);
@@ -117,13 +116,19 @@ std::vector<Flip> find_flips(Triangulation const &t) {
 
   const topcom::TriangNode tn(0, no, rank, seed);
   const topcom::TriangFlips tf(chiro, tn, seed_symmetryptrs, false);
-  topcom::MarkedFlips mf = tf.flips();
+  return {tn, tf.flips()};
+}
 
-  for (auto t_it = mf.begin(); t_it != mf.end(); t_it++) {
-    auto fl = topcom::Flip(tn, t_it->first);
-    auto flip = Flip(t, simplicial_complex_to_triangulation(t.pvc, fl.first),
-                     simplicial_complex_to_triangulation(t.pvc, fl.second));
-    flips.push_back(flip);
+std::vector<Flip> find_flips(Triangulation const &t) {
+  std::vector<Flip> flips;
+
+  auto [tn, mf] = compute_triang_flips(t);
+
+  for (auto const &entry : mf) {
+    auto fl = topcom::Flip(tn, entry.first);
+    flips.push_back(
+        Flip(t, simplicial_complex_to_triangulation(t.pvc, fl.first),
+             simplicial_complex_to_triangulation(t.pvc, fl.second)));
   }
 
   return flips;
@@ -132,27 +137,10 @@ std::vector<Flip> find_flips(Triangulation const &t) {
 std::vector<Triangulation> find_neighbors(Triangulation const &t) {
   std::vector<Triangulation> neighbors;
 
-  topcom::PointConfiguration pc = t.pvc.pvc_data->topcom_pc;
+  auto [tn, mf] = compute_triang_flips(t);
 
-  validate_configuration(pc);
-
-  topcom::Chirotope chiro(pc, false);
-
-  size_t no(chiro.no());
-  size_t rank(chiro.rank());
-  topcom::SymmetryGroup symmetries(no);
-
-  topcom::SimplicialComplex seed = triangulation_to_simplicial_complex(t);
-
-  const topcom::symmetryptr_datapair seed_symmetryptrs(
-      symmetries.stabilizer_ptrs(seed));
-
-  const topcom::TriangNode tn(0, no, rank, seed);
-  const topcom::TriangFlips tf(chiro, tn, seed_symmetryptrs, false);
-  topcom::MarkedFlips mf = tf.flips();
-
-  for (auto t_it = mf.begin(); t_it != mf.end(); t_it++) {
-    auto fl = topcom::Flip(tn, t_it->first);
+  for (auto const &entry : mf) {
+    auto fl = topcom::Flip(tn, entry.first);
     auto sc =
         static_cast<topcom::SimplicialComplex>(topcom::TriangNode(0, tn, fl));
     neighbors.push_back(simplicial_complex_to_triangulation(t.pvc, sc));

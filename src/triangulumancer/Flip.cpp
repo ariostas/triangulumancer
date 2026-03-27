@@ -18,10 +18,10 @@ std::string Flip::repr() const {
                ConfigurationType::Point;
   if (is_pc) {
     msg = msg + "point configuration with " +
-          std::to_string(parent_triangulation.pvc.n_pv()) + " points";
+          std::to_string(parent_triangulation.pvc.n_pv()) + " points.";
   } else {
     msg = msg + "vector configuration with " +
-          std::to_string(parent_triangulation.pvc.n_pv()) + " vectors";
+          std::to_string(parent_triangulation.pvc.n_pv()) + " vectors.";
   }
   return msg;
 }
