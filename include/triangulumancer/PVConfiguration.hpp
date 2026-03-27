@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -36,8 +37,14 @@ struct PVConfigurationData {
   // so that it is no longer possible to add more points/vectors.
   bool is_locked;
 
+  // Protects all mutable fields above from concurrent access.
+  // Recursive to allow methods that hold the lock to call other locking
+  // methods.
+  mutable std::recursive_mutex mtx;
+
   PVConfigurationData(ConfigurationType config_type_in);
-  PVConfigurationData(PVConfigurationData &pvc_data) = default;
+  // Custom copy constructor: copies data but creates a fresh mutex.
+  PVConfigurationData(PVConfigurationData const &pvc_data);
 };
 
 class PVConfiguration {

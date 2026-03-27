@@ -2,22 +2,22 @@
 #include "triangulumancer/PVConfiguration.hpp"
 #include "triangulumancer/TOPCOM.hpp"
 
+#include <mutex>
+
 using namespace triangulumancer;
 
 Triangulation::Triangulation(std::shared_ptr<PVConfigurationData> pvc_data_in,
                              pybind11::array_t<int64_t> simplices_in)
     : pvc(pvc_data_in), m_simplices(simplices_in) {
-  if (!pvc.pvc_data->is_locked) {
-    pvc.pvc_data->is_locked = true;
-  }
+  std::lock_guard<std::recursive_mutex> lock(pvc.pvc_data->mtx);
+  pvc.pvc_data->is_locked = true;
 }
 
 Triangulation::Triangulation(PVConfiguration const &pvc_in,
                              pybind11::array_t<int64_t> simplices_in)
     : pvc(pvc_in), m_simplices(simplices_in) {
-  if (!pvc.pvc_data->is_locked) {
-    pvc.pvc_data->is_locked = true;
-  }
+  std::lock_guard<std::recursive_mutex> lock(pvc.pvc_data->mtx);
+  pvc.pvc_data->is_locked = true;
 }
 
 size_t Triangulation::n_simplices() const {

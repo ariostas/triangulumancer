@@ -7,7 +7,7 @@ from triangulumancer import VectorConfiguration
 
 def test_dim():
     vc = VectorConfiguration([[1, 1], [-1, 1], [1, -1], [-1, -1]])
-    assert vc.dim() == 2
+    assert vc.dim == 2
 
     vc = VectorConfiguration(
         [
@@ -18,7 +18,7 @@ def test_dim():
             [-1, -1, -1, -1],
         ]
     )
-    assert vc.dim() == 4
+    assert vc.dim == 4
 
 
 def test_vectors():
@@ -29,10 +29,9 @@ def test_vectors():
     sorted_vectors = sorted(tuple(vec) for vec in vectors)
 
     vc = VectorConfiguration(sorted_vectors)
-    returned_vectors = vc.vectors()
-    sorted_computed_vectors = sorted(tuple(vec) for vec in returned_vectors)
+    sorted_computed_vectors = sorted(tuple(vec) for vec in vc.vectors)
 
-    assert len(returned_vectors) == 8
+    assert len(vc.vectors) == 8
     assert sorted_computed_vectors == sorted_vectors
 
 
@@ -44,5 +43,12 @@ def test_add_vectors():
     vc = VectorConfiguration(vectors)
     vc.add_vectors([2, 2])
 
-    returned_vectors = vc.vectors()
-    assert returned_vectors[-1].tolist() == [2, 2]
+    assert vc.vectors[-1].tolist() == [2, 2]
+
+    vc = VectorConfiguration()
+    vc.add_vector([2, 2])
+    assert vc.vectors.tolist() == [[2, 2]]
+
+    vc = VectorConfiguration()
+    vc.add_vectors([[1, 2], [3, 4]])
+    assert vc.vectors.tolist() == [[1, 2], [3, 4]]

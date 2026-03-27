@@ -8,7 +8,17 @@ using namespace triangulumancer;
 // PVConfigurationData
 
 PVConfigurationData::PVConfigurationData(ConfigurationType config_type_in)
-    : config_type(config_type_in), is_locked(false) {};
+    : config_type(config_type_in), has_new_pv(false), is_locked(false) {};
+
+PVConfigurationData::PVConfigurationData(PVConfigurationData const &pvc_data)
+    : config_type(pvc_data.config_type) {
+  std::lock_guard<std::recursive_mutex> lock(pvc_data.mtx);
+  topcom_pc = pvc_data.topcom_pc;
+  pv = pvc_data.pv;
+  has_new_pv = pvc_data.has_new_pv;
+  is_locked = pvc_data.is_locked;
+  // mtx is default-initialized: each object gets its own fresh mutex
+}
 
 // PVConfiguration
 
@@ -30,13 +40,13 @@ PVConfiguration::PVConfiguration(pybind11::array_t<int64_t> const &matrix,
   bool is_pc = config_type == ConfigurationType::Point;
 
   pvc_data->topcom_pc = topcom::Matrix(d + 1 * is_pc, n_pv);
-  int64_t *ptr = static_cast<int64_t *>(buf.ptr);
+  auto mat = matrix.unchecked<2>();
   for (ssize_t i = 0; i < n_pv; i++) {
     for (ssize_t j = 0; j < d + 1 * is_pc; j++) {
       if (j == d) {
         pvc_data->topcom_pc(j, i) = 1;
       } else {
-        pvc_data->topcom_pc(j, i) = (signed long)ptr[i * d + j];
+        pvc_data->topcom_pc(j, i) = (signed long)mat(i, j);
       }
     }
   }
@@ -44,9 +54,13 @@ PVConfiguration::PVConfiguration(pybind11::array_t<int64_t> const &matrix,
   pvc_data->has_new_pv = true;
 }
 
-size_t PVConfiguration::n_pv() const { return pvc_data->topcom_pc.coldim(); }
+size_t PVConfiguration::n_pv() const {
+  std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+  return pvc_data->topcom_pc.coldim();
+}
 
 size_t PVConfiguration::dim() const {
+  std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
   bool is_pc = pvc_data->config_type == ConfigurationType::Point;
   return (pvc_data->topcom_pc.rowdim() > 0)
              ? pvc_data->topcom_pc.rowdim() - 1 * is_pc
@@ -67,11 +81,13 @@ std::string PVConfiguration::repr() const {
 }
 
 pybind11::array_t<int64_t> PVConfiguration::pv() const {
+  std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
 
   if (!pvc_data->has_new_pv && pvc_data->pv.has_value()) {
     return pvc_data->pv.value();
   }
 
+  // Call n_pv() and dim() directly; recursive_mutex allows re-entrant locking.
   size_t n_pv_ = n_pv();
   size_t d = dim();
 
@@ -91,6 +107,7 @@ pybind11::array_t<int64_t> PVConfiguration::pv() const {
 }
 
 void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
+  std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
   bool is_pc = pvc_data->config_type == ConfigurationType::Point;
   if (pvc_data->is_locked) {
     std::string msg = (is_pc ? "Point" : "Vector") +
@@ -99,15 +116,19 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
     throw std::runtime_error(msg);
   }
   pybind11::buffer_info buf = matrix.request();
+  // dim() will recursively acquire the same lock.
   size_t d = dim();
-  int64_t *ptr = static_cast<int64_t *>(buf.ptr);
   if (buf.ndim == 1) {
+    if (d == 0) {
+      d = buf.shape[0];
+    }
     if (buf.shape[0] != d) {
       throw std::runtime_error("Dimension mismatch");
     }
+    auto vec = matrix.unchecked<1>();
     auto v = topcom::Vector(d + 1 * is_pc);
     for (size_t i = 0; i < d; i++) {
-      v(i) = (signed long)ptr[i];
+      v(i) = (signed long)vec(i);
     }
     if (is_pc) {
       v(d) = 1;
@@ -115,17 +136,21 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
     pvc_data->topcom_pc.push_back(std::move(v));
     pvc_data->has_new_pv = true;
   } else if (buf.ndim == 2) {
-    size_t n_pv = buf.shape[0];
+    if (d == 0) {
+      d = buf.shape[1];
+    }
+    size_t n_pv_ = buf.shape[0];
     if (buf.shape[1] != d) {
       throw std::runtime_error("Dimension mismatch");
     }
-    for (size_t i = 0; i < n_pv; i++) {
+    auto mat = matrix.unchecked<2>();
+    for (size_t i = 0; i < n_pv_; i++) {
       auto v = topcom::Vector(d + 1 * is_pc);
       for (size_t j = 0; j < d + 1 * is_pc; j++) {
         if (j == d) {
           v(j) = 1;
         } else {
-          v(j) = (signed long)ptr[i * n_pv + j];
+          v(j) = (signed long)mat(i, j);
         }
       }
       pvc_data->topcom_pc.push_back(std::move(v));
@@ -136,21 +161,40 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
   }
 }
 
+// For all triangulation methods: acquire the mutex briefly to set is_locked and
+// ensure any in-flight add_pv() completes, then release it before the
+// (potentially long) computation so other configurations are not blocked.
 Triangulation PVConfiguration::placing_triangulation() const {
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
+  }
   return top::triangulate_placing(*this);
 }
 
 Triangulation PVConfiguration::fine_triangulation() const {
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
+  }
   return top::triangulate_fine(*this);
 }
 
 std::vector<Triangulation>
 PVConfiguration::all_connected_triangulations(bool only_fine) const {
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
+  }
   return top::find_all_connected_triangulations(*this, only_fine);
 }
 
 std::vector<Triangulation>
 PVConfiguration::all_triangulations(bool only_fine) const {
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
+  }
   return top::find_all_triangulations(*this, only_fine);
 }
 
@@ -159,6 +203,10 @@ PVConfiguration::triangulate_with_heights(std::vector<double> const &heights) {
   if (pvc_data->config_type != ConfigurationType::Point) {
     throw std::runtime_error("Triangulation with heights is only implemented "
                              "for point configurations");
+  }
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
   }
   return cgal::triangulate_cgal_infer_dim(PointConfiguration(this->pvc_data),
                                           heights, true);
@@ -170,6 +218,10 @@ PVConfiguration::triangulate_with_weights(std::vector<double> const &weights) {
     throw std::runtime_error("Triangulation with weights is only implemented "
                              "for point configurations");
   }
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
+  }
   return cgal::triangulate_cgal_infer_dim(PointConfiguration(this->pvc_data),
                                           weights, false);
 }
@@ -178,6 +230,10 @@ Triangulation PVConfiguration::delaunay_triangulation() const {
   if (pvc_data->config_type != ConfigurationType::Point) {
     throw std::runtime_error(
         "Delaunay triangulation is only implemented for point configurations");
+  }
+  {
+    std::lock_guard<std::recursive_mutex> lock(pvc_data->mtx);
+    pvc_data->is_locked = true;
   }
   return cgal::triangulate_delaunay(PointConfiguration(this->pvc_data));
 }
