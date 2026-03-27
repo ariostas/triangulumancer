@@ -40,13 +40,13 @@ PVConfiguration::PVConfiguration(pybind11::array_t<int64_t> const &matrix,
   bool is_pc = config_type == ConfigurationType::Point;
 
   pvc_data->topcom_pc = topcom::Matrix(d + 1 * is_pc, n_pv);
-  int64_t *ptr = static_cast<int64_t *>(buf.ptr);
+  auto mat = matrix.unchecked<2>();
   for (ssize_t i = 0; i < n_pv; i++) {
     for (ssize_t j = 0; j < d + 1 * is_pc; j++) {
       if (j == d) {
         pvc_data->topcom_pc(j, i) = 1;
       } else {
-        pvc_data->topcom_pc(j, i) = (signed long)ptr[i * d + j];
+        pvc_data->topcom_pc(j, i) = (signed long)mat(i, j);
       }
     }
   }
@@ -118,7 +118,6 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
   pybind11::buffer_info buf = matrix.request();
   // dim() will recursively acquire the same lock.
   size_t d = dim();
-  int64_t *ptr = static_cast<int64_t *>(buf.ptr);
   if (buf.ndim == 1) {
     if (d == 0) {
       d = buf.shape[0];
@@ -126,9 +125,10 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
     if (buf.shape[0] != d) {
       throw std::runtime_error("Dimension mismatch");
     }
+    auto vec = matrix.unchecked<1>();
     auto v = topcom::Vector(d + 1 * is_pc);
     for (size_t i = 0; i < d; i++) {
-      v(i) = (signed long)ptr[i];
+      v(i) = (signed long)vec(i);
     }
     if (is_pc) {
       v(d) = 1;
@@ -143,13 +143,14 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
     if (buf.shape[1] != d) {
       throw std::runtime_error("Dimension mismatch");
     }
+    auto mat = matrix.unchecked<2>();
     for (size_t i = 0; i < n_pv_; i++) {
       auto v = topcom::Vector(d + 1 * is_pc);
       for (size_t j = 0; j < d + 1 * is_pc; j++) {
         if (j == d) {
           v(j) = 1;
         } else {
-          v(j) = (signed long)ptr[i * d + j];
+          v(j) = (signed long)mat(i, j);
         }
       }
       pvc_data->topcom_pc.push_back(std::move(v));
