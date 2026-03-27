@@ -40,7 +40,7 @@ simplicial_complex_to_triangulation(PVConfiguration const &pvc,
 topcom::SimplicialComplex
 triangulation_to_simplicial_complex(Triangulation const &t) {
   auto simplices = t.simplices();
-  auto simplices_buf = simplices.data();
+  auto simplices_mat = simplices.unchecked<2>();
 
   bool is_pc = t.pvc.pvc_data->config_type == ConfigurationType::Point;
 
@@ -53,7 +53,7 @@ triangulation_to_simplicial_complex(Triangulation const &t) {
   for (unsigned int simp_idx = 0; simp_idx < n_simplices; simp_idx++) {
     simp.clear();
     for (unsigned int dim_idx = 0; dim_idx < dim; dim_idx++) {
-      simp += simplices_buf[simp_idx * dim + dim_idx];
+      simp += simplices_mat(simp_idx, dim_idx);
     }
     sc += simp;
   }

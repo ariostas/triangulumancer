@@ -111,3 +111,30 @@ def test_direct_construction():
     t = Triangulation(p, simplices)
 
     assert t.simplices.tolist() == simplices
+
+
+def test_vc_triangulation_with_degenerate_flip():
+    # This fails in TOPCOM 1.1.2
+    vecs = [
+        [3, 1, -2, -1],
+        [0, 0, 0, 1],
+        [-1, -3, 1, 1],
+        [0, 2, 1, -1],
+        [2, 0, -1, 0],
+        [1, -1, 0, 0],
+        [1, 1, 0, 0],
+        [0, 0, 1, 0],
+        [-1, 0, 0, 0],
+        [1, 0, 0, 0],
+        [0, -2, 1, 1],
+        [3, 1, -1, -1],
+        [4, 3, -1, -2],
+        [1, -1, 0, 1],
+        [0, -3, 1, 2],
+        [2, 2, 0, -1],
+    ]
+
+    vc = VectorConfiguration(vecs)
+    t = vc.fine_triangulation()
+
+    assert len(t.simplices) == 46

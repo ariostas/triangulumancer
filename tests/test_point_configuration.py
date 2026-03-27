@@ -44,3 +44,11 @@ def test_add_points():
     p.add_point([2, 2])
 
     assert p.points[-1].tolist() == [2, 2]
+
+    p = PointConfiguration()
+    p.add_point([2, 2])
+    assert p.points.tolist() == [[2, 2]]
+
+    p = PointConfiguration()
+    p.add_points([[1, 2], [3, 4]])
+    assert p.points.tolist() == [[1, 2], [3, 4]]
