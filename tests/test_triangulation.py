@@ -127,7 +127,6 @@ def test_flips():
     assert len(flips) == 6
 
     flip = flips[0]
-    assert flip.parent_triangulation.n_simplices == t.n_simplices
     assert flip.pre.n_simplices > 0
     assert flip.post.n_simplices > 0
 

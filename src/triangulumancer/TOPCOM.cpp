@@ -127,7 +127,7 @@ std::vector<Flip> find_flips(Triangulation const &t) {
   for (auto const &entry : mf) {
     auto fl = topcom::Flip(tn, entry.first);
     flips.push_back(
-        Flip(t, simplicial_complex_to_triangulation(t.pvc, fl.first),
+        Flip(simplicial_complex_to_triangulation(t.pvc, fl.first),
              simplicial_complex_to_triangulation(t.pvc, fl.second)));
   }
 
