@@ -113,6 +113,28 @@ def test_direct_construction():
     assert t.simplices.tolist() == simplices
 
 
+def test_equality():
+    p = PointConfiguration([[0, 0], [1, 0], [1, 1], [0, 1]])
+    triangulations = p.all_triangulations()
+    assert len(triangulations) == 2
+
+    t1a, t1b = triangulations[0], triangulations[0]
+    t2 = triangulations[1]
+
+    assert t1a == t1b
+    assert t1a != t2
+
+    # Same simplices, same config -> equal
+    p2 = PointConfiguration([[0, 0], [1, 0], [1, 1], [0, 1]])
+    t_copy = Triangulation(p2, triangulations[0].simplices.tolist())
+    assert t_copy == triangulations[0]
+
+    # Different config -> not equal
+    p3 = PointConfiguration([[0, 0], [1, 0], [2, 1], [0, 1]])
+    t_diff_pc = Triangulation(p3, triangulations[0].simplices.tolist())
+    assert not (t_diff_pc == triangulations[0])
+
+
 def test_vc_triangulation_with_degenerate_flip():
     # This fails in TOPCOM 1.1.2
     vecs = [

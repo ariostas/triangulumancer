@@ -52,3 +52,20 @@ def test_add_points():
     p = PointConfiguration()
     p.add_points([[1, 2], [3, 4]])
     assert p.points.tolist() == [[1, 2], [3, 4]]
+
+
+def test_equality():
+    p1 = PointConfiguration([[0, 0], [1, 0], [0, 1]])
+    p2 = PointConfiguration([[0, 0], [1, 0], [0, 1]])
+    p3 = PointConfiguration([[0, 0], [1, 0], [1, 1]])
+
+    assert p1 == p2
+    assert p1 != p3
+
+    # Same object
+    assert p1 == p1
+    assert not (p1 != p1)
+
+    # Different number of points
+    p4 = PointConfiguration([[0, 0], [1, 0]])
+    assert p1 != p4

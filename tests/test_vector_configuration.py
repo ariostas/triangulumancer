@@ -52,3 +52,20 @@ def test_add_vectors():
     vc = VectorConfiguration()
     vc.add_vectors([[1, 2], [3, 4]])
     assert vc.vectors.tolist() == [[1, 2], [3, 4]]
+
+
+def test_equality():
+    vc1 = VectorConfiguration([[1, 0], [0, 1], [-1, -1]])
+    vc2 = VectorConfiguration([[1, 0], [0, 1], [-1, -1]])
+    vc3 = VectorConfiguration([[1, 0], [0, 1], [1, 1]])
+
+    assert vc1 == vc2
+    assert vc1 != vc3
+
+    # Same object
+    assert vc1 == vc1
+    assert not (vc1 != vc1)
+
+    # Different number of vectors
+    vc4 = VectorConfiguration([[1, 0], [0, 1]])
+    assert vc1 != vc4
