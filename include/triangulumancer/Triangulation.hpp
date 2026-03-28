@@ -30,6 +30,10 @@ struct Triangulation {
   std::string repr() const;
   pybind11::array_t<int64_t> simplices() const;
 
+  // Comparison
+  bool operator==(Triangulation const &other) const;
+  bool operator!=(Triangulation const &other) const;
+
   // TOPCOM functionality
   std::vector<Triangulation> neighbors() const;
 };

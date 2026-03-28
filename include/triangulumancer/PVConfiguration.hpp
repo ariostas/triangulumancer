@@ -66,6 +66,10 @@ public:
   void add_pv(pybind11::array_t<int64_t> const &matrix);
   // Removing points/vectors complicates things a lot, so it's not supported
 
+  // Comparison
+  bool operator==(PVConfiguration const &other) const;
+  bool operator!=(PVConfiguration const &other) const;
+
   // TOPCOM functionality
   std::vector<Triangulation>
   all_connected_triangulations(bool only_fine = false) const;

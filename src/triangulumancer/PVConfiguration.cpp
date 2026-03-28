@@ -238,6 +238,30 @@ Triangulation PVConfiguration::delaunay_triangulation() const {
   return cgal::triangulate_delaunay(PointConfiguration(this->pvc_data));
 }
 
+bool PVConfiguration::operator==(PVConfiguration const &other) const {
+  if (pvc_data == other.pvc_data)
+    return true;
+  if (pvc_data->config_type != other.pvc_data->config_type)
+    return false;
+  size_t n = n_pv();
+  size_t d = dim();
+  if (n != other.n_pv() || d != other.dim())
+    return false;
+  auto a = pv().unchecked<2>();
+  auto b = other.pv().unchecked<2>();
+  for (size_t i = 0; i < n; i++) {
+    for (size_t j = 0; j < d; j++) {
+      if (a(i, j) != b(i, j))
+        return false;
+    }
+  }
+  return true;
+}
+
+bool PVConfiguration::operator!=(PVConfiguration const &other) const {
+  return !(*this == other);
+}
+
 // PointConfiguration
 
 PointConfiguration::PointConfiguration()

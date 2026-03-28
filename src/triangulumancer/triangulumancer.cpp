@@ -16,6 +16,10 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def_property_readonly("points", &PointConfiguration::points)
       .def("add_point", &PointConfiguration::add_point)
       .def("add_points", &PointConfiguration::add_point)
+      .def("__eq__", [](PointConfiguration const &a,
+                        PointConfiguration const &b) { return a == b; })
+      .def("__ne__", [](PointConfiguration const &a,
+                        PointConfiguration const &b) { return a != b; })
       .def("placing_triangulation", &PointConfiguration::placing_triangulation)
       .def("fine_triangulation", &PointConfiguration::fine_triangulation)
       .def("all_connected_triangulations",
@@ -38,6 +42,10 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def_property_readonly("vectors", &VectorConfiguration::vectors)
       .def("add_vector", &VectorConfiguration::add_vector)
       .def("add_vectors", &VectorConfiguration::add_vector)
+      .def("__eq__", [](VectorConfiguration const &a,
+                        VectorConfiguration const &b) { return a == b; })
+      .def("__ne__", [](VectorConfiguration const &a,
+                        VectorConfiguration const &b) { return a != b; })
       .def("placing_triangulation", &VectorConfiguration::placing_triangulation)
       .def("fine_triangulation", &VectorConfiguration::fine_triangulation)
       .def("all_connected_triangulations",
@@ -52,5 +60,7 @@ PYBIND11_MODULE(triangulumancer, m, pybind11::mod_gil_not_used(),
       .def_property_readonly("dim", &Triangulation::dim)
       .def("__repr__", &Triangulation::repr)
       .def_property_readonly("simplices", &Triangulation::simplices)
-      .def("neighbors", &Triangulation::neighbors);
+      .def("neighbors", &Triangulation::neighbors)
+      .def("__eq__", &Triangulation::operator==)
+      .def("__ne__", &Triangulation::operator!=);
 }

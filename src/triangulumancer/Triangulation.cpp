@@ -46,6 +46,30 @@ pybind11::array_t<int64_t> Triangulation::simplices() const {
   return m_simplices;
 }
 
+bool Triangulation::operator==(Triangulation const &other) const {
+  if (!(pvc == other.pvc))
+    return false;
+  size_t n = n_simplices();
+  if (n != other.n_simplices())
+    return false;
+  if (n == 0)
+    return true;
+  auto a = m_simplices.unchecked<2>();
+  auto b = other.m_simplices.unchecked<2>();
+  size_t verts = static_cast<size_t>(m_simplices.shape(1));
+  for (size_t i = 0; i < n; i++) {
+    for (size_t j = 0; j < verts; j++) {
+      if (a(i, j) != b(i, j))
+        return false;
+    }
+  }
+  return true;
+}
+
+bool Triangulation::operator!=(Triangulation const &other) const {
+  return !(*this == other);
+}
+
 std::vector<Triangulation> Triangulation::neighbors() const {
   return top::find_neighbors(*this);
 }
