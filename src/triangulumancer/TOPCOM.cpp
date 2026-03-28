@@ -114,7 +114,7 @@ compute_triang_flips(Triangulation const &t) {
   const topcom::symmetryptr_datapair seed_symmetryptrs(
       symmetries.stabilizer_ptrs(seed));
 
-  const topcom::TriangNode tn(0, no, rank, seed);
+  topcom::TriangNode tn(0, no, rank, seed);
   const topcom::TriangFlips tf(chiro, tn, seed_symmetryptrs, false);
   return {tn, tf.flips()};
 }
