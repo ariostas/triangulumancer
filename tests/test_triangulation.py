@@ -132,6 +132,12 @@ def test_flips():
 
     assert len(t.bistellar_flips()) == 6
 
+    p = PointConfiguration([[0, 0], [1, 0], [1, 1], [0, 1]])
+    t = p.placing_triangulation()
+    flips = t.flips()
+    assert len(flips) == 1
+    assert len(flips[0].pre.simplices) == len(flips[0].post.simplices) == 2
+
 
 def test_vc_triangulation_with_degenerate_flip():
     # This fails in TOPCOM 1.1.2
