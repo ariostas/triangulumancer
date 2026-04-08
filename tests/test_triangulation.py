@@ -126,9 +126,12 @@ def test_flips():
     flips = t.flips()
     assert len(flips) == 6
 
-    flip = flips[0]
-    assert flip.pre.n_simplices > 0
-    assert flip.post.n_simplices > 0
+    flip1 = flips[0]
+    assert flip1.pre.n_simplices == 2
+    assert flip1.post.n_simplices == 1
+    flip2 = flips[2]
+    assert flip2.pre.n_simplices == 2
+    assert flip2.post.n_simplices == 2
 
     assert len(t.bistellar_flips()) == 6
 
