@@ -13,7 +13,7 @@ include(FetchContent)
 FetchContent_Declare(
   topcom
   GIT_REPOSITORY https://github.com/ariostas/TOPCOM.git
-  GIT_TAG main)
+  GIT_TAG a4333293e9c3cbcf5b8420b89ee30f51078d47fc)
 FetchContent_MakeAvailable(topcom)
 target_compile_definitions(topcom PUBLIC USE_PHIT_PREPROCESSING=false)
 
