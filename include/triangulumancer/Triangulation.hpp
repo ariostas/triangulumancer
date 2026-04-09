@@ -11,6 +11,8 @@
 
 namespace triangulumancer {
 
+struct Flip;
+
 struct Triangulation {
   // This is only a light wrapper
   PVConfiguration pvc;
@@ -31,6 +33,7 @@ struct Triangulation {
   pybind11::array_t<int64_t> simplices() const;
 
   // TOPCOM functionality
+  std::vector<Flip> flips() const;
   std::vector<Triangulation> neighbors() const;
 };
 

@@ -113,6 +113,38 @@ def test_direct_construction():
     assert t.simplices.tolist() == simplices
 
 
+def test_flips():
+    p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
+    t = p.placing_triangulation()
+    assert len(t.flips()) == 0
+    assert len(t.bistellar_flips()) == 0
+
+    p = PointConfiguration(
+        [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
+    )
+    t = p.placing_triangulation()
+    flips = t.flips()
+    assert len(flips) == 6
+
+    for flip in flips:
+        assert flip.pre.n_simplices == 2
+        assert flip.post.n_simplices in (1, 2)
+
+    assert len(t.bistellar_flips()) == 6
+
+    p = PointConfiguration([[0, 0], [1, 0], [1, 1], [0, 1]])
+    t = p.placing_triangulation()
+    flips = t.flips()
+    assert len(flips) == 1
+    assert len(flips[0].pre.simplices) == len(flips[0].post.simplices) == 2
+
+    vc = VectorConfiguration([[0, 0, 1], [1, 0, 3], [1, 1, 1], [0, 1, 2]])
+    t = vc.placing_triangulation()
+    flips = t.flips()
+    assert len(flips) == 1
+    assert len(flips[0].pre.simplices) == len(flips[0].post.simplices) == 2
+
+
 def test_vc_triangulation_with_degenerate_flip():
     # This fails in TOPCOM 1.1.2
     vecs = [

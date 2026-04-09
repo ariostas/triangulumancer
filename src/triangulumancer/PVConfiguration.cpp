@@ -46,7 +46,7 @@ PVConfiguration::PVConfiguration(pybind11::array_t<int64_t> const &matrix,
       if (j == d) {
         pvc_data->topcom_pc(j, i) = 1;
       } else {
-        pvc_data->topcom_pc(j, i) = (signed long)mat(i, j);
+        pvc_data->topcom_pc(j, i) = static_cast<signed long>(mat(i, j));
       }
     }
   }
@@ -128,7 +128,7 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
     auto vec = matrix.unchecked<1>();
     auto v = topcom::Vector(d + 1 * is_pc);
     for (size_t i = 0; i < d; i++) {
-      v(i) = (signed long)vec(i);
+      v(i) = static_cast<signed long>(vec(i));
     }
     if (is_pc) {
       v(d) = 1;
@@ -150,7 +150,7 @@ void PVConfiguration::add_pv(pybind11::array_t<int64_t> const &matrix) {
         if (j == d) {
           v(j) = 1;
         } else {
-          v(j) = (signed long)mat(i, j);
+          v(j) = static_cast<signed long>(mat(i, j));
         }
       }
       pvc_data->topcom_pc.push_back(std::move(v));

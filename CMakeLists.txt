@@ -39,6 +39,7 @@ set(TRIANGULUMANCER_SOURCES
     src/triangulumancer/triangulumancer.cpp
     src/triangulumancer/PVConfiguration.cpp
     src/triangulumancer/Triangulation.cpp
+    src/triangulumancer/Flip.cpp
     src/triangulumancer/CGAL.cpp
     src/triangulumancer/TOPCOM.cpp)
 pybind11_add_module(triangulumancer ${TRIANGULUMANCER_SOURCES})
