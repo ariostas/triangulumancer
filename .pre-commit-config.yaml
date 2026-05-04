@@ -28,13 +28,13 @@ repos:
         args: ["-L", "ba,socio-economic"]
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: "v22.1.2"
+    rev: "v22.1.4"
     hooks:
     - id: clang-format
       types_or: [c++, c]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.9
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: ["--fix", "--show-fixes"]
