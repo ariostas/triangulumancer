@@ -1,6 +1,6 @@
-from triangulumancer import PointConfiguration, VectorConfiguration, Triangulation
-
 import pytest
+
+from triangulumancer import PointConfiguration, Triangulation, VectorConfiguration
 
 
 def test_cgal_simplex():
