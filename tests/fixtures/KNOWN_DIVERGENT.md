@@ -116,5 +116,18 @@ should become ordinary exceptions.
 Regenerate with a larger budget via:
 
 ```bash
-python scripts/gen_fixtures.py --timeout 600 --only <name>
+python scripts/gen_fixtures.py --timeout 900 --only <name>
 ```
+
+**`vc_degenerate_flip` does not simply need a larger budget.** Its four
+enumeration entries are recorded as timeouts at 30s, and a re-run at 900s was
+stopped under system memory pressure while `all_triangulations` was still in
+flight, several minutes in. Sixteen vectors of rank four is not a large input,
+and the oracle collects every triangulation into a `std::vector` before
+returning any of them.
+
+That is the concrete case for the streaming enumeration in
+[`PLAN.md`](../../PLAN.md) section 5.4: the Rust core yields triangulations
+through a callback or iterator and collects into a `Vec` only when asked, so
+counting or filtering a large enumeration costs no memory. It is also why
+phase 5's acceptance criteria should include this configuration finishing.

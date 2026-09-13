@@ -276,6 +276,13 @@ hopeless. The Rust core exposes a callback/iterator as the *primary* API and col
 on request; the Python side gains `iter_all_triangulations()` / `iter_all_connected_triangulations()`
 alongside the existing list-returning methods. See [`TOPCOM.md` §11.1](TOPCOM.md) risk 5.
 
+This is not a theoretical limit, and the threshold is lower than the figures above suggest.
+The Phase 0 corpus contains a 16-vector rank-4 configuration (`vc_degenerate_flip`, taken
+from the existing test suite) whose four enumerations all time out, and whose
+`all_triangulations` run was stopped under system memory pressure several minutes in.
+**Phase 5's acceptance criteria should include that configuration finishing** — streaming is
+what makes that possible, so it is a requirement rather than an optimisation.
+
 ### 5.5 Free-threading
 
 The current module declares `mod_gil_not_used()` and `per_interpreter_gil()`. PyO3 0.28+
@@ -538,6 +545,11 @@ that guarantees each triangulation is produced exactly once. Getting it subtly w
 silently missing or duplicated results. **Mitigation:** differential-test *sets*, not just
 counts, over the entire corpus; cross-check against Phase 4 (on configurations whose flip
 graph is connected, the two enumerations must produce identical sets).
+
+**Exit criteria:** matches fixtures as sets over the whole corpus, and `vc_degenerate_flip`
+— where the oracle times out on all four enumerations and exhausts memory (§5.4) —
+completes. That configuration is the phase's headline target, not a stretch goal: it is the
+one input in the corpus the C++ cannot handle at all.
 
 ### Phase 6 — Regular and Delaunay triangulations  *(~3 000 LOC, high risk)*
 
