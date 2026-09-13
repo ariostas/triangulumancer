@@ -5,7 +5,7 @@ import numpy as np
 from triangulumancer import PointConfiguration
 
 
-def test_dim():
+def test_dim() -> None:
     p = PointConfiguration([[1, 1], [-1, 1], [1, -1], [-1, -1]])
     assert p.dim == 2
 
@@ -21,7 +21,7 @@ def test_dim():
     assert p.dim == 4
 
 
-def test_points():
+def test_points() -> None:
     points = np.array(
         [[1, 1], [-1, 1], [1, -1], [-1, -1], [0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]],
         dtype=np.int64,
@@ -35,7 +35,7 @@ def test_points():
     assert sorted_computed_points == sorted_points
 
 
-def test_add_points():
+def test_add_points() -> None:
     points = np.array(
         [[1, 1], [-1, 1], [1, -1], [-1, -1], [0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]],
         dtype=np.int64,

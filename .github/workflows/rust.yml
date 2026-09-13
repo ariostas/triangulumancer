@@ -1,0 +1,63 @@
+name: Rust CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, windows-2022]
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          # This workflow builds the dev profile while the Python workflow builds
+          # release; sharing a key would leave one of them restoring a target dir
+          # without its profile.
+          key: dev
+      # `--locked` fails the build rather than silently re-resolving when
+      # Cargo.lock is out of date with Cargo.toml. Without it a manifest change
+      # committed without its lockfile update would be tested against a
+      # dependency set that is in nobody's tree.
+      - name: Build
+        run: cargo build --locked --verbose
+      - name: Build with the Python bindings
+        run: cargo build --locked --features python --verbose
+      - name: Run tests
+        run: cargo test --locked --verbose
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Clippy with the Python bindings
+        run: cargo clippy --locked --features python --all-targets -- -D warnings
+
+  check-rust:
+    name: Check Rust
+    if: always()
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}

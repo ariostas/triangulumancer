@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import pytest
 
 from triangulumancer import PointConfiguration, Triangulation, VectorConfiguration
 
 
-def test_cgal_simplex():
+def test_cgal_simplex() -> None:
     p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
     t = p.delaunay_triangulation()
     assert len(t.simplices) == 1
@@ -18,7 +20,7 @@ def test_cgal_simplex():
     assert set(t.simplices[0]) == {0, 1, 2}
 
 
-def test_cgal_square():
+def test_cgal_square() -> None:
     p = PointConfiguration(
         [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
     )
@@ -35,14 +37,14 @@ def test_cgal_square():
     assert len(t.simplices) == 8
 
 
-def test_locking_pc():
+def test_locking_pc() -> None:
     p = PointConfiguration([[0, 0], [1, 0], [1, 1]])
     p.delaunay_triangulation()
     with pytest.raises(RuntimeError):
         p.add_point([2, 2])
 
 
-def test_topcom_simplex():
+def test_topcom_simplex() -> None:
     p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
     t = p.placing_triangulation()
     assert len(t.simplices) == 1
@@ -61,7 +63,7 @@ def test_topcom_simplex():
     assert len(p.all_triangulations(True)) == 1
 
 
-def test_topcom_square():
+def test_topcom_square() -> None:
     p = PointConfiguration(
         [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
     )
@@ -80,7 +82,7 @@ def test_topcom_square():
     assert len(p.all_triangulations(True)) == 64
 
 
-def test_topcom_simplicial_cone():
+def test_topcom_simplicial_cone() -> None:
     vc = VectorConfiguration([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     t = vc.placing_triangulation()
     assert len(t.simplices) == 1
@@ -90,7 +92,7 @@ def test_topcom_simplicial_cone():
     assert len(vc.all_triangulations(True)) == 1
 
 
-def test_topcom_square_vc():
+def test_topcom_square_vc() -> None:
     vc = VectorConfiguration(
         [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
     )
@@ -105,7 +107,7 @@ def test_topcom_square_vc():
     )  # simps: 01, 12, 23, 34, 45, 56, 67, 70
 
 
-def test_direct_construction():
+def test_direct_construction() -> None:
     p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
     simplices = [[0, 1, 2]]
     t = Triangulation(p, simplices)
@@ -113,7 +115,7 @@ def test_direct_construction():
     assert t.simplices.tolist() == simplices
 
 
-def test_flips():
+def test_flips() -> None:
     p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
     t = p.placing_triangulation()
     assert len(t.flips()) == 0
@@ -145,7 +147,7 @@ def test_flips():
     assert len(flips[0].pre.simplices) == len(flips[0].post.simplices) == 2
 
 
-def test_vc_triangulation_with_degenerate_flip():
+def test_vc_triangulation_with_degenerate_flip() -> None:
     # This fails in TOPCOM 1.1.2
     vecs = [
         [3, 1, -2, -1],

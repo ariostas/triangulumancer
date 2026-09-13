@@ -16,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: "recursive"
       - name: Build SDist
         run: pipx run build --sdist
       - uses: actions/upload-artifact@v7
@@ -30,42 +28,30 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, windows-2022]
+    env:
+      # These are the artifacts users actually install, so the wheels must be
+      # built from the committed lockfile rather than a fresh resolution.
+      MATURIN_PEP517_ARGS: --locked
     steps:
       - name: Check out repo
         uses: actions/checkout@v7
       - name: Build wheels
-        run: |
-          pipx run cibuildwheel
+        run: pipx run cibuildwheel
         env:
+          CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH" CARGO_TERM_COLOR="always" MATURIN_PEP517_ARGS="--locked"'
+          CIBW_BEFORE_BUILD: rustup show
+          CIBW_BEFORE_BUILD_LINUX: >
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=stable --profile=minimal -y &&
+            rustup show
           CIBW_TEST_COMMAND: "pytest -vv {project}"
           CIBW_TEST_REQUIRES: pytest
-          CIBW_SKIP: "*_i686 *-macosx_x86_64 *-musllinux_*"
+          CIBW_SKIP: "*_i686 *-macosx_x86_64"
+          # abi3-py310 covers the GIL-enabled builds with a single wheel, but
+          # free-threaded 3.14 has no stable ABI (abi3t arrives with 3.15, per
+          # PEP 803), so it needs its own version-specific wheel.
+          CIBW_ENABLE: cpython-freethreading
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_BEFORE_ALL_LINUX: >
-            yum install -y
-            cmake
-            boost-devel
-            eigen3-devel
-            gmp-devel
-            mpfr-devel
-            CGAL-devel &&
-            curl -LO https://github.com/cddlib/cddlib/releases/download/0.94n/cddlib-0.94n.tar.gz &&
-            tar xf cddlib-0.94n.tar.gz &&
-            cd cddlib-0.94n &&
-            ./configure --prefix=/usr/local &&
-            make -j && make install &&
-            cd ..
-          CIBW_BEFORE_ALL_MACOS: >
-            brew install
-            cmake
-            boost
-            eigen
-            gmp
-            mpfr
-            cgal
-            cddlib
-          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
       - name: Upload wheels
         uses: actions/upload-artifact@v7
         with:
@@ -76,7 +62,7 @@ jobs:
   deploy-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build-wheels]
+    needs: [build-wheels, make-sdist]
     environment:
       name: pypi
       url: https://pypi.org/p/triangulumancer
@@ -92,3 +78,22 @@ jobs:
           merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  deploy-crate:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    # Just to make sure both get deployed together.
+    needs: [build-wheels, make-sdist]
+    environment:
+      name: crates.io
+      url: https://crates.io/crates/triangulumancer
+    permissions:
+      id-token: write
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+      - name: Publish to crates.io
+        run: |
+          cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          cargo publish --locked

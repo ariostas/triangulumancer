@@ -5,7 +5,7 @@ import numpy as np
 from triangulumancer import VectorConfiguration
 
 
-def test_dim():
+def test_dim() -> None:
     vc = VectorConfiguration([[1, 1], [-1, 1], [1, -1], [-1, -1]])
     assert vc.dim == 2
 
@@ -21,7 +21,7 @@ def test_dim():
     assert vc.dim == 4
 
 
-def test_vectors():
+def test_vectors() -> None:
     vectors = np.array(
         [[1, 1], [-1, 1], [1, -1], [-1, -1], [0, 1], [0, -1], [1, 0], [-1, 0]],
         dtype=np.int64,
@@ -35,7 +35,7 @@ def test_vectors():
     assert sorted_computed_vectors == sorted_vectors
 
 
-def test_add_vectors():
+def test_add_vectors() -> None:
     vectors = np.array(
         [[1, 1], [-1, 1], [1, -1], [-1, -1], [0, 1], [0, -1], [1, 0], [-1, 0]],
         dtype=np.int64,

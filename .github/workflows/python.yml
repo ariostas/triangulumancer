@@ -1,0 +1,54 @@
+name: Python CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, windows-2022]
+        python-version: ["3.10", "3.14", "3.14t"]
+    env:
+      # `pip install .` drives cargo through maturin, which takes its cargo
+      # flags from this variable; the Rust workflow passes `--locked` directly.
+      MATURIN_PEP517_ARGS: --locked
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Pip install the package
+        run: python -m pip install .[test]
+      - name: Run pytest
+        run: pytest -vv
+
+  check-python:
+    name: Check Python
+    if: always()
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}

@@ -1,23 +1,23 @@
 [build-system]
-requires = ["scikit-build-core", "pybind11"]
-build-backend = "scikit_build_core.build"
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "triangulumancer"
-version = "0.3.0"
 description = "Construct triangulations of point configurations."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     {name = "Andres Rios Tascon"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
-    "Programming Language :: C++",
+    "Programming Language :: Rust",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -33,6 +33,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 requires-python = ">=3.10"
+dynamic = ["version"]
 dependencies = [
     "numpy",
 ]
@@ -45,18 +46,77 @@ test = [
 [project.urls]
 Repository = "https://github.com/ariostas/triangulumancer"
 
+[tool.maturin]
+python-source = "python"
+module-name = "triangulumancer._core"
+# The bindings live behind the off-by-default `python` feature, so it has to be
+# enabled here; plain `cargo build` then does not have to compile pyo3.
+features = ["python", "pyo3/extension-module"]
+
+[tool.uv]
+# Without these, uv will not rebuild the extension module when only the Rust
+# sources change, so `uv run pytest` would test a stale build.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "src/**/*.rs" },
+]
+
 [tool.pytest.ini_options]
-minversion = "7.0"
+# 8.0 for `@pytest.hookimpl(wrapper=True)`, used by python/tests/conftest.py.
+minversion = "8.0"
 addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
 xfail_strict = true
 filterwarnings = ["error"]
 log_cli_level = "info"
 testpaths = [
-    "tests",
+    "python/tests",
 ]
 
-[tool.scikit-build]
-sdist.exclude = [
-    ".github",
-    "extern"
+[tool.ruff]
+src = ["python", "scripts"]
+
+[tool.ruff.lint]
+extend-select = [
+    "B",        # flake8-bugbear
+    "I",        # isort
+    "ARG",      # flake8-unused-arguments
+    "C4",       # flake8-comprehensions
+    "EM",       # flake8-errmsg
+    "ICN",      # flake8-import-conventions
+    "G",        # flake8-logging-format
+    "PGH",      # pygrep-hooks
+    "PIE",      # flake8-pie
+    "PL",       # pylint
+    "PT",       # flake8-pytest-style
+    "PTH",      # flake8-use-pathlib
+    "RET",      # flake8-return
+    "RUF",      # Ruff-specific
+    "SIM",      # flake8-simplify
+    "T20",      # flake8-print
+    "UP",       # pyupgrade
+    "YTT",      # flake8-2020
+    "EXE",      # flake8-executable
+    "NPY",      # NumPy specific rules
+    "FURB",     # refurb
+    "PYI",      # flake8-pyi
 ]
+ignore = [
+    "PLR09",    # Too many <...>
+    "PLR2004",  # Magic value used in comparison
+    "ISC001",   # Conflicts with formatter
+]
+isort.required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.per-file-ignores]
+"python/tests/**" = ["T20"]
+# The fixture generator is a command line script and reports progress.
+"scripts/**" = ["T20"]
+
+[tool.mypy]
+files = ["python", "scripts"]
+python_version = "3.10"
+strict = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+warn_unreachable = true
+ignore_missing_imports = true
