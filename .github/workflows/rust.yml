@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - main
+      # The Rust migration is a long-lived branch developed over several
+      # phases; its commits need checking too, not just the eventual merge.
+      - rust-migration
   pull_request:
     branches:
       - main
+      - rust-migration
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
