@@ -725,21 +725,36 @@ Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, cli
 with `-D warnings`, `cargo fmt --check` passes, `prek -a` passes all hooks, the extension
 imports, pytest collects and skips cleanly, and the fixture generator runs end to end.
 
-**Not verified:**
+**Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
-* **Windows CI.** The workflows include `windows-2022` and there is no longer any C
-  dependency, so it ought to work, but it has never run. The first push will say.
-* **Free-threaded wheels.** `python.yml` tests `3.14t` and `deploy.yml` sets
-  `CIBW_ENABLE: cpython-freethreading`, neither of which has run. `abi3-py310` cannot cover
-  `3.14t` (§5.5), so that wheel is version-specific; expect to iterate here. Mildly
-  reassuring: 0.3.0 on PyPI *does* ship `cp314t` wheels for macOS arm64 and both Linux
-  arches, so free-threaded wheel building has worked in this repository's CI before — just
-  under scikit-build-core rather than maturin.
+* **Windows works.** `cargo build`/`test`/`clippy` and `pip install .[test]` + `pytest` all
+  pass on `windows-2022`, which the C++ package could never do. This was the single largest
+  open question about the migration and it is now settled.
+* **Free-threading works.** `python.yml` builds and tests `3.14t` alongside `3.10` and `3.14`
+  on all four platforms, so `abi3-py310` plus a version-specific free-threaded build is the
+  right shape (§5.5) and PyO3's `gil_used = false` compiles under it.
+* **All four platforms × three interpreters.** ubuntu-24.04, ubuntu-24.04-arm, macos-15,
+  windows-2022.
+
+**Not verified:**
 * **crates.io publish.** `deploy-crate` needs a `CARGO_REGISTRY_TOKEN` secret and the
   `crates.io` environment on the repository; neither is set up. The name
   `triangulumancer` is unclaimed on crates.io (checked 2026-11-12) — worth claiming early,
   since the whole point of §4's layout is that the Rust library is publishable.
 * **`cargo package`.** Never run. The `exclude` list in `Cargo.toml` is a guess.
+* **`deploy.yml`.** Only runs on a published release or `workflow_dispatch`, so none of the
+  cibuildwheel configuration has executed. Expect to iterate on it at Phase 7, not before.
+
+### CI runs on this branch
+
+Both workflows trigger on pushes to `rust-migration` as well as `main`, so every phase
+commit is checked without needing an open pull request. Remove those two lines from the
+trigger lists when the branch merges.
+
+Note that `macos-14` — used by the pre-migration workflow, and still used on `main` — has
+been retired by GitHub; jobs on it fail in under two seconds with "The configuration
+'macos-14-arm64-us-default' is not supported". This branch uses `macos-15`. **`main`'s own
+CI is broken until someone makes the same change there**, independently of this migration.
 
 ---
 
