@@ -1,19 +1,31 @@
 # CGAL → Rust: design input for reimplementing the regular-triangulation slice
 
-**Status:** research / design input. No code in this repo has been changed.
+**Status:** research / design input, written 2026-09-12. Implemented by phase 6 of
+[`PLAN.md`](PLAN.md).
 
-**Audience:** whoever implements the Rust replacement for `src/triangulumancer/CGAL.cpp`.
+**Audience:** whoever implements the Rust replacement for the regular-triangulation
+code that `triangulumancer` 0.3 got from CGAL. The C++ it replaced is
+`src/triangulumancer/CGAL.cpp` at the `legacy-cpp` tag.
 
-All `path:line` references below are into a CGAL checkout. Clone with:
+All `path:line` references below are into a CGAL checkout. Recreate it with:
 
 ```bash
-git clone --depth 1 --filter=blob:none --sparse https://github.com/CGAL/cgal.git cgal
-cd cgal && git sparse-checkout set Triangulation/include NewKernel_d/include \
+git clone --filter=blob:none --sparse https://github.com/CGAL/cgal.git cgal
+cd cgal
+git checkout v6.2.1
+git sparse-checkout set Triangulation/include NewKernel_d/include \
     Kernel_d/include Spatial_sorting/include Number_types/include Installation/include
 ```
 
 Paths are written relative to that checkout root, e.g.
 `Triangulation/include/CGAL/Regular_triangulation.h:965`.
+
+> **Line numbers are approximate.** These notes were taken against `main` as of
+> 2026-09-12; `v6.2.1` (released 2026-09-04) is the nearest tagged release and is
+> what the command above pins, so a few references may be off by a line or two.
+> **The quoted symbol and function names are the reliable anchor** — grep for those
+> rather than trusting a line number that does not land where you expect. TOPCOM,
+> by contrast, is pinned to an exact revision and its line numbers are exact.
 
 ---
 

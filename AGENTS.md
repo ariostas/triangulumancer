@@ -63,9 +63,16 @@ virtualenv and records the output of every public method over a corpus of
 configurations.
 
 The oracle has known bugs that are deliberately not fixed (`PLAN.md` section 3).
-Affected results are marked `known_divergent` in the fixture data and must be
-asserted to *differ* from the Rust implementation, never to match. See
-`tests/fixtures/KNOWN_DIVERGENT.md`.
+Affected results are listed per entry under `untrusted` in the fixture data, and
+must **not** be asserted against — neither equality nor inequality. Asserting
+inequality would be tempting, but a broken computation can still land on the
+right answer by luck, and a test that fails for a correct implementation is worse
+than no test.
+
+Where the correct value is independently known it is written down in
+`tests/fixtures/KNOWN_DIVERGENT.md` as a positive assertion instead. Those are
+the real acceptance criteria for the phases that fix each bug — read that file
+before writing tests against the corpus.
 
 ## Commits
 

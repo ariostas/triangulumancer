@@ -6,11 +6,21 @@ pure-Rust implementation (exposed to Python through PyO3/maturin).
 Everything below was read out of the exact pinned fork/revision the project builds:
 
 * repo `https://github.com/ariostas/TOPCOM.git`, rev `a4333293e9c3cbcf5b8420b89ee30f51078d47fc`
-  (`CMakeLists.txt:17-20` of this project)
+  (pinned at `CMakeLists.txt:17-20` of the `legacy-cpp` tag; that file is gone from
+  this branch)
 * sources under `lib-src/` (library) and `lib-src-reg/` (regularity/LP, cddlib)
 
+Recreate the checkout with:
+
+```bash
+git clone https://github.com/ariostas/TOPCOM.git topcom
+cd topcom && git checkout a4333293e9c3cbcf5b8420b89ee30f51078d47fc
+```
+
 File references below are written `lib-src/File.cc:123` and are relative to the TOPCOM
-checkout root. References into this project are written `src/triangulumancer/TOPCOM.cpp:42`.
+checkout root; because the revision is pinned exactly, they are exact. References into
+this project are written `src/triangulumancer/TOPCOM.cpp:42` and point at the
+`legacy-cpp` tag, where the C++ still exists.
 
 ---
 

@@ -697,3 +697,148 @@ everything else there is a matter of *where* code is put rather than how much of
 
 *(Symmetry was previously an open question here; §6.2 resolves it — build the seam, not the
 feature.)*
+
+---
+
+## 13. Current status
+
+**Phase 0 is complete** (branch `rust-migration`). Phases 1–7 are not started.
+
+| | |
+|---|---|
+| Branch | `rust-migration` — nothing is on `main` |
+| The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
+| PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
+| Rust | `cargo build` / `test` / `clippy` clean on both feature sets; 4 unit tests |
+| Python | `import triangulumancer` works; `pytest` gives 16 skips, each naming its phase |
+| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0` |
+
+### What exists in `src/`
+
+Only `lib.rs` (the `ConfigKind` point/vector distinction, plus the layering doc comment),
+`error.rs` (the `#[non_exhaustive] Error` enum), and `python.rs` (the full 0.3 API surface as
+`todo()` stubs). **No algorithms.** The module tree in §4 is the target, not the current state.
+
+### Verified vs not
+
+Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
+with `-D warnings`, `cargo fmt --check` passes, `prek -a` passes all hooks, the extension
+imports, pytest collects and skips cleanly, and the fixture generator runs end to end.
+
+**Not verified:**
+
+* **Windows CI.** The workflows include `windows-2022` and there is no longer any C
+  dependency, so it ought to work, but it has never run. The first push will say.
+* **Free-threaded wheels.** `python.yml` tests `3.14t` and `deploy.yml` sets
+  `CIBW_ENABLE: cpython-freethreading`, neither of which has run. `abi3-py310` cannot cover
+  `3.14t` (§5.5), so that wheel is version-specific; expect to iterate here. Mildly
+  reassuring: 0.3.0 on PyPI *does* ship `cp314t` wheels for macOS arm64 and both Linux
+  arches, so free-threaded wheel building has worked in this repository's CI before — just
+  under scikit-build-core rather than maturin.
+* **crates.io publish.** `deploy-crate` needs a `CARGO_REGISTRY_TOKEN` secret and the
+  `crates.io` environment on the repository; neither is set up. The name
+  `triangulumancer` is unclaimed on crates.io (checked 2026-11-12) — worth claiming early,
+  since the whole point of §4's layout is that the Rust library is publishable.
+* **`cargo package`.** Never run. The `exclude` list in `Cargo.toml` is a guess.
+
+---
+
+## 14. Picking this up on another machine
+
+### Prerequisites
+
+```bash
+# Rust: 1.85+ (edition 2024). Nothing else to install — no CMake, no CGAL, no GMP.
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# uv, for the dev venv and for the fixture generator's throwaway oracle venv.
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# prek, for linting (the project uses it in place of `pre-commit run -a`).
+uv tool install prek
+```
+
+### Setup
+
+```bash
+git clone git@github.com:ariostas/triangulumancer.git
+cd triangulumancer
+git checkout rust-migration
+
+cargo test                                      # should pass, 4 tests
+cargo clippy --all-targets -- -D warnings
+cargo clippy --features python --all-targets -- -D warnings
+
+uv venv .venv-dev
+VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
+.venv-dev/bin/python -m pytest                  # should give 16 skips, 0 failures
+
+prek -a --quiet                                 # all hooks should pass
+```
+
+`.venv-dev/` and `target/` are gitignored, so both are rebuilt from scratch. The first
+`uv pip install -e` compiles the extension through maturin and takes a minute.
+
+### The upstream sources you will need
+
+Both research documents cite `path:line` into checkouts that are **not** in this repository
+and must be recreated. The commands are in each document's preamble; in short:
+
+```bash
+# TOPCOM — pinned to an exact revision, so its line numbers are exact.
+git clone https://github.com/ariostas/TOPCOM.git topcom
+cd topcom && git checkout a4333293e9c3cbcf5b8420b89ee30f51078d47fc
+
+# CGAL — sparse, pinned to the nearest release to when the notes were written.
+# Line numbers are approximate; grep for the quoted symbol names instead.
+git clone --filter=blob:none --sparse https://github.com/CGAL/cgal.git cgal
+cd cgal && git checkout v6.2.1 && git sparse-checkout set \
+    Triangulation/include NewKernel_d/include Kernel_d/include \
+    Spatial_sorting/include Number_types/include Installation/include
+```
+
+Put them wherever you like, outside the repository.
+
+### Regenerating the fixture corpus
+
+Only needed if the corpus changes; the committed one is complete.
+
+```bash
+python scripts/gen_fixtures.py --list        # inspect, installs nothing
+python scripts/gen_fixtures.py               # ~15 min, needs network and uv
+python scripts/gen_fixtures.py --only grid   # re-run a subset, merged into the corpus
+```
+
+It installs `triangulumancer==0.3.0` from PyPI into a throwaway venv, so it needs a platform
+that 0.3.0 has a wheel for. That is macOS **arm64** and Linux x86_64/arm64 only — there are
+no Windows wheels and no Intel-macOS wheels, and building 0.3.0 from source means installing
+CGAL, TOPCOM's dependencies, GMP and cddlib, which is the whole thing we are escaping. On
+those platforms, take the committed corpus as given; it is complete and does not need
+regenerating to do any of phases 1–7.
+
+Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
+
+### Starting Phase 1
+
+In order, and note that the harness comes first:
+
+1. `tests/` — the differential harness for `sign_of_det`: a naive `BigInt` cofactor expansion
+   (`O(n!)`, fine for `n ≤ 8`) over random and deliberately near-singular matrices. Write it
+   before the implementation. §6 of `CGAL.md` and §8 of `TOPCOM.md` are the references.
+2. `src/arith/` — the three-tier stack of §5.1: f64 filter, `i128` Bareiss, bigint Bareiss.
+   Add `dashu-int = "0.6"` to `Cargo.toml` at this point (§4 explains why it is not there yet).
+3. `src/config.rs` + `src/config/hull.rs` — the configuration matrix, exact rank, and the HNF
+   affine-hull reduction. This is what fixes B4.
+4. `src/simplex.rs` — the bitset `Simplex` and `SimplexSet`.
+5. `src/python.rs` — replace the `todo()` stubs for `dim`, `n_points`/`n_vectors`,
+   `points`/`vectors`, `add_point(s)`/`add_vector(s)`, `__repr__`, and the locking behaviour.
+   Add `numpy` usage here; the dependency is already declared.
+
+Phase 1 is done when `test_point_configuration.py` and `test_vector_configuration.py` pass
+rather than skip, and the `sign_of_det` harness is green on ≥10⁶ matrices.
+
+### A warning about the `__repr__` strings
+
+The 0.3 strings are asserted nowhere in the test suite but are in the README's doctest-style
+example, e.g. `A 2-dimensional point configuration with 9 points`. Reproduce them exactly;
+they are recoverable from `git show legacy-cpp:src/triangulumancer/PVConfiguration.cpp`.
