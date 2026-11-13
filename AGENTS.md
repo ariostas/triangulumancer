@@ -7,6 +7,12 @@ It is being rewritten from C++ (CGAL + TOPCOM behind pybind11) to pure Rust with
 PyO3 bindings. **Read `PLAN.md` before making changes** — it defines the phases,
 the architecture, and the decisions that have already been made.
 
+**Start with the status banner at the top of `PLAN.md`**: it says which phase is
+done and which is next. The migration runs over eight phases, so most of what the
+plan describes does not exist yet — the module tree in its section 4 is the
+target, not the current state. Section 7 has the phase table; section 13 has the
+detail. When you finish a phase, update the banner and that table.
+
 The two companion documents are design input, produced by reading the upstream
 sources, and should be treated as the reference for the algorithms:
 

@@ -10,6 +10,19 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
+> ## ▶ Status: Phase 0 complete. **Phase 1 is next.**
+>
+> Branch `rust-migration`, CI green on all four platforms. There are **no algorithms in
+> `src/` yet** — only the error type, the point/vector distinction, and `NotImplementedError`
+> stubs carrying the full 0.3 API surface. The module tree in §4 is the *target*, not the
+> current state.
+>
+> * **§7** — the phase table and what each phase ships.
+> * **§13** — what exists, what CI has verified, what it has not.
+> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 1.
+>
+> *Finishing a phase means updating this banner and the table in §7, alongside §13.*
+
 ---
 
 ## 1. Motivation
@@ -430,7 +443,21 @@ Sequenced so that the low-risk majority of the work lands first, and so that eac
 a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 [`TOPCOM.md` §11](TOPCOM.md).
 
-### Phase 0 — Reference corpus and scaffolding *(no algorithms)*
+| | Phase | Ships | Risk | Status |
+|---|---|---|---|---|
+| 0 | Reference corpus and scaffolding | *(nothing user-visible)* | low | ✅ **done** |
+| 1 | Exact arithmetic and configuration core | the configuration classes | high | ▶ **next** |
+| 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ⬜ |
+| 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ⬜ |
+| 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ⬜ |
+| 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ⬜ |
+| 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ⬜ |
+| 7 | Parity, performance, release | the 0.4.0 release | low | ⬜ |
+
+Phases 5 and 6 are independent of each other and share only the Phase 1 foundation, so they
+can be taken in either order, or in parallel.
+
+### ✅ Phase 0 — Reference corpus and scaffolding — **DONE** *(no algorithms)*
 
 * Tag the final C++ commit `legacy-cpp`; work proceeds on the `rust-migration` branch.
 * **The C++ bugs of §3 are not fixed in the C++.** Decided: the effort goes into the Rust
@@ -465,7 +492,7 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 **Exit criteria:** `maturin develop` works; `import triangulumancer` succeeds; fixture corpus
 committed and regenerable; CI green on all platforms including Windows.
 
-### Phase 1 — Exact arithmetic and the configuration core  *(~750 LOC, high risk)*
+### ▶ Phase 1 — Exact arithmetic and the configuration core — **NEXT** *(~750 LOC, high risk)*
 
 * `arith::sign_of_det`: the three-tier stack of §5.1.
 * `config::Config`: column-major integer matrix, exact rank, point-vs-vector homogenisation.
@@ -486,7 +513,7 @@ deliberately near-singular ones. Write the validation harness *before* the imple
 matrices; `Config` rank matches the C++ on the whole fixture corpus; configuration tests in
 `test_point_configuration.py` and `test_vector_configuration.py` pass unchanged.
 
-### Phase 2 — Oriented-matroid layer, placing and fine triangulations  *(~550 LOC, low–medium risk)*
+### ⬜ Phase 2 — Oriented-matroid layer, placing and fine triangulations  *(~550 LOC, low–medium risk)*
 
 * `om::chirotope`: lazy, memoised chirotope over `sign_of_det`, behind the
   `OrientedMatroid` trait of §6.1. **From here on, no algorithm in `triang/` takes a
@@ -502,7 +529,7 @@ including the 46-simplex degenerate vector configuration that "fails in TOPCOM 1
 Additionally, the chirotope itself matches `points2chiro` output — a differential test worth
 having on its own, and the one that validates the §6.1 boundary.
 
-### Phase 3 — Circuits, flips and neighbours  *(~750 LOC, medium–hard risk)*
+### ⬜ Phase 3 — Circuits, flips and neighbours  *(~750 LOC, medium–hard risk)*
 
 * `om::circuit`: `Circuit`, `containment_ok`, `link_ok` — in `om/`, not `triang/`, per §6.1.
 * `triang::flip`: `FlipRep`, naive (recompute-all) flip enumeration and application.
@@ -513,7 +540,7 @@ entire degenerate-input correctness story, which our TOPCOM fork has already had
 twice. **Mitigation:** the exhaustive `n ≤ 8, d ≤ 4` fixture sweep from Phase 0, comparing
 full flip sets rather than counts. Cross-check `om::circuit` against `points2circuits`.
 
-### Phase 4 — Flip-graph enumeration  *(~250 LOC, medium risk)*
+### ⬜ Phase 4 — Flip-graph enumeration  *(~250 LOC, medium risk)*
 
 * `triang::flipgraph`: BFS with a single visited set (simpler than TOPCOM's two-layer
   scheme), streaming per §5.4.
@@ -525,7 +552,7 @@ full flip sets rather than counts. Cross-check `om::circuit` against `points2cir
 **Exit criteria:** matches fixtures, including 387/64 for the 3×3 grid. Note the
 known-divergent fixtures from B1 must match the *patched* C++, not `0.3.0`.
 
-### Phase 5 — Extension-graph enumeration  *(~1 500 LOC, highest risk)*
+### ⬜ Phase 5 — Extension-graph enumeration  *(~1 500 LOC, highest risk)*
 
 * `om::cocircuit` (`Cocircuits`, `Facets`, `Incidences`) — in `om/`, per §6.1, since these
   are oriented-matroid objects and are what `points2cocircuits`/`points2facets` would expose.
@@ -551,7 +578,7 @@ graph is connected, the two enumerations must produce identical sets).
 completes. That configuration is the phase's headline target, not a stretch goal: it is the
 one input in the corpus the C++ cannot handle at all.
 
-### Phase 6 — Regular and Delaunay triangulations  *(~3 000 LOC, high risk)*
+### ⬜ Phase 6 — Regular and Delaunay triangulations  *(~3 000 LOC, high risk)*
 
 The CGAL replacement, per [`CGAL.md` §6.6](CGAL.md): CGAL's data structure, the single
 lifted predicate, preceded by the affine-hull reduction already built in Phase 1.
@@ -579,7 +606,7 @@ capped-iteration walk that returns a hard error rather than hanging. Use a flip-
 construction (start from the placing triangulation of Phase 2, flip down to regular) as an
 independent oracle on small inputs.
 
-### Phase 7 — Parity, performance, release
+### ⬜ Phase 7 — Parity, performance, release
 
 * Full differential suite green across the corpus, order-sensitive per §5.6.
 * Criterion benchmarks against the `0.3.0` oracle. Watch two things specifically:
@@ -702,7 +729,8 @@ feature.)*
 
 ## 13. Current status
 
-**Phase 0 is complete** (branch `rust-migration`). Phases 1–7 are not started.
+**Phase 0 is complete; Phase 1 is next.** Nothing in phases 1–7 has been started. The phase
+table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
 |---|---|
