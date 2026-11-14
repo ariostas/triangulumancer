@@ -73,7 +73,10 @@ vertex handles silently insert index `0`. For a configuration that does not span
 its ambient space the result is an array padded with zeros, of the wrong shape.
 
 **Marking:** every `delaunay_triangulation` and `triangulate_with_*` result on a
-case tagged `rank_deficient`.
+case tagged `rank_deficient`, or whose `placing_triangulation` the oracle rejected
+as not full rank. The second condition catches `single_point`, which is
+rank-deficient without being tagged so; it was missing until phase 1, when the
+rank test over the corpus (`tests/fixture_rank.rs`) tripped over it.
 
 **Observed:** for four collinear points in the plane the oracle returns
 `[[0,0,1],[0,1,2],[0,2,3]]` — each 1-simplex padded with a spurious leading `0`,
@@ -82,9 +85,11 @@ in an array of the wrong width. For a single point in the plane it returns
 `[[0,1],[1,2],[2,3]]` and the 0-dimensional `[[0]]`, in the configuration's own
 affine hull.
 
-**Phase 1** fixes this structurally, via the exact affine-hull reduction: a
-rank-deficient configuration is reduced to its own affine hull rather than
-producing garbage.
+**Phase 1** fixes this structurally, via the exact affine-hull reduction
+(`Config::reduce_to_hull`): a rank-deficient configuration is reduced to its own
+affine hull rather than producing garbage. Phase 1 checks the hulls themselves —
+the collinear case reduces to the points `0, 1, 2, 3` on a line, the single point
+to dimension 0 — and **phase 6** asserts the triangulations above.
 
 ## B5 — index recovery by coordinate scan
 

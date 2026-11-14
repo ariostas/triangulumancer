@@ -578,8 +578,12 @@ def _untrusted(case: Case, results: dict[str, dict[str, Any]]) -> list[str]:
     # B4: rank-deficient input hits `std::map::operator[]` on null vertex
     # handles, so the simplices array is padded with index 0 and has the wrong
     # shape. B5: with duplicate points the coordinate scan picks an arbitrary
-    # one of them.
-    if {"rank_deficient", "duplicates"} & set(case.tags):
+    # one of them. Rank deficiency is read off the oracle's own TOPCOM path,
+    # which rejects it, as well as the tag: a single point in the plane is
+    # rank-deficient without being tagged so.
+    placing_error = results.get("placing_triangulation", {}).get("error", "")
+    rank_deficient = "rank_deficient" in case.tags or "not full rank" in placing_error
+    if rank_deficient or "duplicates" in case.tags:
         untrusted.update(
             k for k in results if k.startswith(("triangulate_with_", "delaunay"))
         )
