@@ -633,9 +633,70 @@ impl IntoIterator for SimplexSet {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Enumerating subsets
+// ---------------------------------------------------------------------------
+
+/// The `k`-element subsets of `{0, ..., n - 1}`, in canonical (lexicographic)
+/// order.
+///
+/// This is TOPCOM's `Permutation(n, k)` stepped with `lexnext()`, the order in
+/// which it enumerates bases (`find_non_deg_basis`) and prints chirotopes.
+/// Yields the empty simplex once for `k == 0`, and nothing for `k > n`.
+pub fn combinations(n: usize, k: usize) -> Combinations {
+    Combinations {
+        n,
+        current: (k <= n).then(|| (0..k).collect()),
+    }
+}
+
+/// Iterator returned by [`combinations`].
+#[derive(Debug, Clone)]
+pub struct Combinations {
+    n: usize,
+    /// The next subset to yield, as increasing labels; `None` when exhausted.
+    current: Option<Vec<usize>>,
+}
+
+impl Iterator for Combinations {
+    type Item = Simplex;
+
+    fn next(&mut self) -> Option<Simplex> {
+        let labels = self.current.as_mut()?;
+        let out: Simplex = labels.iter().copied().collect();
+        // Advance: bump the rightmost label that is not at its maximum, and
+        // reset everything after it to the smallest values above it.
+        let k = labels.len();
+        match (0..k).rev().find(|&i| labels[i] < self.n - k + i) {
+            Some(i) => {
+                labels[i] += 1;
+                for j in i + 1..k {
+                    labels[j] = labels[j - 1] + 1;
+                }
+            }
+            None => self.current = None,
+        }
+        Some(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn combinations_are_lexicographic_and_complete() {
+        let all: Vec<Vec<usize>> = combinations(5, 3).map(|s| s.to_vec()).collect();
+        assert_eq!(all.len(), 10);
+        assert_eq!(all[0], vec![0, 1, 2]);
+        assert_eq!(all[1], vec![0, 1, 3]);
+        assert_eq!(all[9], vec![2, 3, 4]);
+        assert!(all.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(combinations(3, 0).collect::<Vec<_>>(), vec![Simplex::new()]);
+        assert_eq!(combinations(2, 3).count(), 0);
+        assert_eq!(combinations(4, 4).count(), 1);
+        assert_eq!(combinations(130, 1).last(), Some(Simplex::from([129])));
+    }
 
     fn s(labels: &[usize]) -> Simplex {
         Simplex::from(labels)

@@ -23,12 +23,16 @@
 //!   over them, including the reduction to the affine hull. Coordinates live
 //!   here and nowhere else, apart from `regular`.
 //! * [`simplex`] — simplices as bitsets of labels, and sets of simplices.
-//! * `om` — the oriented-matroid layer: chirotope, circuits, cocircuits. Built
-//!   *from* a configuration, and the only thing the combinatorial algorithms
-//!   consume.
-//! * `triang` — triangulations, flips, and enumerations. These take an
-//!   oriented matroid, never a configuration. Keeping that boundary is what
+//! * [`om`] — the oriented-matroid layer: chirotope and circuits (cocircuits
+//!   later). Built *from* a configuration, and the only thing the
+//!   combinatorial algorithms consume.
+//! * [`triang`] — triangulations: placing and fine so far, flips and the
+//!   enumerations later. These take an oriented matroid, never a
+//!   configuration. Keeping that boundary is what
 //!   makes the rest of TOPCOM's `chiro2*` functionality cheap to add later.
+//!
+//! [`symmetry`] is the seam for enumerating up to symmetry; only the trivial
+//! group exists.
 //!
 //! `regular` sits beside them: a regular triangulation is *not* determined by
 //! the oriented matroid, so it is the one algorithm that genuinely needs
@@ -42,7 +46,10 @@
 pub mod arith;
 pub mod config;
 pub mod error;
+pub mod om;
 pub mod simplex;
+pub mod symmetry;
+pub mod triang;
 
 #[cfg(feature = "python")]
 pub mod python;

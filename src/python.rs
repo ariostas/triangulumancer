@@ -9,18 +9,25 @@
 //!
 //! The classes below carry the full 0.3 API surface so that the shape of the
 //! package is fixed from the start. The configuration classes are real as of
-//! phase 1; the triangulation methods are stubs that raise
+//! phase 1, and the placing and fine triangulations and the `Triangulation`
+//! class as of phase 2; the remaining methods are stubs that raise
 //! `NotImplementedError` until their phase lands. `python/tests/conftest.py`
 //! turns that exception into a skip, so the pytest suite lights up phase by
 //! phase without any test edits.
 
+use std::sync::Arc;
+
 use numpy::ndarray::Array2;
 use numpy::{AllowTypeChange, IntoPyArray, PyArray2, PyArrayLikeDyn};
-use pyo3::exceptions::{PyIndexError, PyNotImplementedError, PyRuntimeError, PyValueError};
+use pyo3::exceptions::{
+    PyIndexError, PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError,
+};
 use pyo3::prelude::*;
 
 use crate::config::{Config, Kind, Lockable, Points, Vectors};
-use crate::error::Error;
+use crate::error::{Error, Result};
+use crate::om::Chirotope;
+use crate::triang;
 
 impl From<Error> for PyErr {
     fn from(err: Error) -> Self {
@@ -91,6 +98,25 @@ fn coordinates<'py, K: Kind>(
     Ok(array.into_pyarray(py))
 }
 
+/// Run a chirotope-based triangulation algorithm on a configuration, then lock
+/// the configuration and wrap the result. A failure leaves it unlocked, as in
+/// 0.3, where the lock was taken by the `Triangulation` constructor.
+fn triangulate<K: Kind>(
+    py: Python<'_>,
+    config: &mut Lockable<K>,
+    algorithm: fn(&Chirotope) -> Result<triang::Triangulation>,
+) -> PyResult<Triangulation>
+where
+    SharedConfig: From<Arc<Config<K>>>,
+{
+    let frozen = config.get();
+    let inner = py.detach(|| frozen.chirotope().and_then(|c| algorithm(&c)))?;
+    Ok(Triangulation {
+        config: config.lock().into(),
+        inner,
+    })
+}
+
 /// A configuration of points in affine space.
 #[pyclass(module = "triangulumancer")]
 pub struct PointConfiguration {
@@ -134,12 +160,12 @@ impl PointConfiguration {
         self.add_point(matrix)
     }
 
-    fn placing_triangulation(&self) -> PyResult<Triangulation> {
-        todo("PointConfiguration.placing_triangulation", 2)
+    fn placing_triangulation(&mut self, py: Python<'_>) -> PyResult<Triangulation> {
+        triangulate(py, &mut self.inner, triang::placing)
     }
 
-    fn fine_triangulation(&self) -> PyResult<Triangulation> {
-        todo("PointConfiguration.fine_triangulation", 2)
+    fn fine_triangulation(&mut self, py: Python<'_>) -> PyResult<Triangulation> {
+        triangulate(py, &mut self.inner, triang::fine)
     }
 
     #[pyo3(signature = (only_fine = false))]
@@ -212,12 +238,12 @@ impl VectorConfiguration {
         self.add_vector(matrix)
     }
 
-    fn placing_triangulation(&self) -> PyResult<Triangulation> {
-        todo("VectorConfiguration.placing_triangulation", 2)
+    fn placing_triangulation(&mut self, py: Python<'_>) -> PyResult<Triangulation> {
+        triangulate(py, &mut self.inner, triang::placing)
     }
 
-    fn fine_triangulation(&self) -> PyResult<Triangulation> {
-        todo("VectorConfiguration.fine_triangulation", 2)
+    fn fine_triangulation(&mut self, py: Python<'_>) -> PyResult<Triangulation> {
+        triangulate(py, &mut self.inner, triang::fine)
     }
 
     #[pyo3(signature = (only_fine = false))]
@@ -237,41 +263,166 @@ impl VectorConfiguration {
 // Triangulations and flips
 // ---------------------------------------------------------------------------
 
+/// A locked configuration of either kind, shared by every triangulation of it.
+///
+/// Triangulations refer to their configuration by label, so they keep it alive
+/// and frozen (`Lockable::lock`).
+#[derive(Clone)]
+enum SharedConfig {
+    Points(Arc<Config<Points>>),
+    Vectors(Arc<Config<Vectors>>),
+}
+
+impl From<Arc<Config<Points>>> for SharedConfig {
+    fn from(c: Arc<Config<Points>>) -> Self {
+        Self::Points(c)
+    }
+}
+
+impl From<Arc<Config<Vectors>>> for SharedConfig {
+    fn from(c: Arc<Config<Vectors>>) -> Self {
+        Self::Vectors(c)
+    }
+}
+
+impl SharedConfig {
+    fn dim(&self) -> usize {
+        match self {
+            Self::Points(c) => c.dim(),
+            Self::Vectors(c) => c.dim(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Points(c) => c.len(),
+            Self::Vectors(c) => c.len(),
+        }
+    }
+
+    fn noun(&self) -> &'static str {
+        match self {
+            Self::Points(c) => c.kind().noun(),
+            Self::Vectors(c) => c.kind().noun(),
+        }
+    }
+}
+
+/// An unlocked configuration of either kind, borrowed from its Python object.
+enum ConfigArg<'py> {
+    Points(PyRefMut<'py, PointConfiguration>),
+    Vectors(PyRefMut<'py, VectorConfiguration>),
+}
+
+impl<'py> ConfigArg<'py> {
+    fn extract(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+        if obj.is_instance_of::<PointConfiguration>() {
+            Ok(Self::Points(obj.extract()?))
+        } else if obj.is_instance_of::<VectorConfiguration>() {
+            Ok(Self::Vectors(obj.extract()?))
+        } else {
+            Err(PyTypeError::new_err(
+                "expected a PointConfiguration or a VectorConfiguration",
+            ))
+        }
+    }
+}
+
+/// `Triangulation(config, simplices)` for one kind of configuration: shape
+/// checks always, the full triangulation check when `validate`, and the lock
+/// last, so that a rejected triangulation leaves the configuration unlocked.
+fn construct<K: Kind>(
+    config: &mut Lockable<K>,
+    labels: &[i64],
+    shape: &[usize],
+    validate: bool,
+) -> PyResult<Triangulation>
+where
+    SharedConfig: From<Arc<Config<K>>>,
+{
+    let frozen = config.get();
+    let rank = frozen.rank();
+    let width = match *shape {
+        [_, width] => width,
+        // An empty list carries no width; take it to have the right one.
+        [0] => rank,
+        _ => {
+            return Err(Error::InvalidShape {
+                expected: "a two-dimensional array of simplices",
+                found: shape.len(),
+            }
+            .into());
+        }
+    };
+    let inner = triang::Triangulation::from_labels(frozen.len(), rank, labels, width)?;
+    if validate {
+        inner.check(&frozen.chirotope()?)?;
+    }
+    Ok(Triangulation {
+        config: config.lock().into(),
+        inner,
+    })
+}
+
 /// A triangulation of a point or vector configuration.
-#[pyclass(module = "triangulumancer")]
-pub struct Triangulation {}
+///
+/// Holds its configuration, locked, and the simplices in canonical order:
+/// sorted within each simplex, then lexicographically.
+#[pyclass(module = "triangulumancer", frozen)]
+pub struct Triangulation {
+    config: SharedConfig,
+    inner: triang::Triangulation,
+}
 
 #[pymethods]
 impl Triangulation {
+    /// A triangulation of `config` with the given simplices, one row of labels
+    /// each. It is checked to be a triangulation unless `validate` is false;
+    /// either way the simplices must have the right size and labels in range.
     #[new]
-    fn new(config: &Bound<'_, PyAny>, simplices: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let _ = (config, simplices);
-        todo("Triangulation", 2)
+    #[pyo3(signature = (config, simplices, validate = true))]
+    fn new(config: &Bound<'_, PyAny>, simplices: IntArray<'_>, validate: bool) -> PyResult<Self> {
+        let (labels, shape) = unpack(&simplices);
+        match ConfigArg::extract(config)? {
+            ConfigArg::Points(mut c) => construct(&mut c.inner, &labels, &shape, validate),
+            ConfigArg::Vectors(mut c) => construct(&mut c.inner, &labels, &shape, validate),
+        }
     }
 
-    fn __repr__(&self) -> PyResult<String> {
-        todo("Triangulation.__repr__", 2)
-    }
-
-    #[getter]
-    fn dim(&self) -> PyResult<usize> {
-        todo("Triangulation.dim", 2)
-    }
-
-    #[getter]
-    fn n_simplices(&self) -> PyResult<usize> {
-        todo("Triangulation.n_simplices", 2)
-    }
-
-    #[getter]
-    fn simplices(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let _ = py;
-        todo("Triangulation.simplices", 2)
+    fn __repr__(&self) -> String {
+        let noun = self.config.noun();
+        format!(
+            "A triangulation with {} simplices of a {noun} configuration with {} {noun}s",
+            self.inner.len(),
+            self.config.len()
+        )
     }
 
     #[getter]
-    fn is_fine(&self) -> PyResult<bool> {
-        todo("Triangulation.is_fine", 4)
+    fn dim(&self) -> usize {
+        self.config.dim()
+    }
+
+    #[getter]
+    fn n_simplices(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[getter]
+    fn simplices<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<i64>>> {
+        let flat: Vec<i64> = self
+            .inner
+            .iter()
+            .flat_map(|s| s.iter().map(|v| v as i64))
+            .collect();
+        let array = Array2::from_shape_vec((self.inner.len(), self.inner.rank()), flat)
+            .map_err(|_| Error::Internal("simplices array shape"))?;
+        Ok(array.into_pyarray(py))
+    }
+
+    #[getter]
+    fn is_fine(&self) -> bool {
+        self.inner.is_fine()
     }
 
     fn flips(&self) -> PyResult<Vec<Flip>> {
