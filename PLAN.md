@@ -10,16 +10,18 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phase 0 complete. **Phase 1 is next.**
+> ## ▶ Status: Phases 0–1 complete. **Phase 2 is next.**
 >
-> Branch `rust-migration`, CI green on all four platforms. There are **no algorithms in
-> `src/` yet** — only the error type, the point/vector distinction, and `NotImplementedError`
-> stubs carrying the full 0.3 API surface. The module tree in §4 is the *target*, not the
-> current state.
+> Branch `rust-migration`. `src/` now has the foundation: exact determinant signs
+> (`arith`), integer configurations with exact rank and affine-hull reduction (`config`),
+> and bitset simplices (`simplex`). The Python configuration classes are real; every
+> triangulation method is still a `NotImplementedError` stub. `om/`, `triang/`, `regular/`
+> and `symmetry.rs` in §4 do not exist yet.
 >
 > * **§7** — the phase table and what each phase ships.
-> * **§13** — what exists, what CI has verified, what it has not.
-> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 1.
+> * **§13** — what exists, what CI has verified, and **the Phase 1 decisions later phases
+>   build on**.
+> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 2.
 >
 > *Finishing a phase means updating this banner and the table in §7, alongside §13.*
 
@@ -213,7 +215,8 @@ python = ["dep:pyo3", "dep:numpy"]
 
 [dependencies]
 dashu-int = "0.6"         # bigint fallback tier; MIT/Apache-2.0, pure Rust
-robust    = "1.2"         # d = 2, 3 predicate fast paths; MIT/Apache-2.0, zero deps
+robust    = "1.2"         # d = 2, 3 predicate fast paths — not adopted in Phase 1,
+                          # reconsider in Phase 6 (§13, "Phase 1 decisions")
 pyo3      = { version = "0.29", features = ["abi3-py310"], optional = true }
 numpy     = { version = "0.29", optional = true }
 ```
@@ -265,6 +268,8 @@ The three-tier predicate stack, shared by both backends:
 3. **Bigint Bareiss** on `checked_*` overflow. Astronomically rare for realistic input.
 
 For `d = 2` and `d = 3`, delegate to `robust` — it will beat anything hand-written.
+*(Phase 1 did not: `robust` takes `f64` points, so it only applies to integer input below
+`2^53` and to point predicates, not general determinants. Revisit in Phase 6; see §13.)*
 
 ### 5.2 Errors, not exits
 
@@ -407,7 +412,7 @@ exists as an internal and only needs a public API plus bindings.
 | `points2circuits`, `points2cocircuits`, `points2facets` | **Free** | Built in Phases 3 and 5, live in `om/` |
 | `points2flips` | **Free** | Already exposed as `Triangulation.flips()` |
 | `points2vertices` | **Trivial** | Read off the cocircuits |
-| `points2volume` | **Trivial** | One determinant per simplex; Phase 1 gives exact determinants |
+| `points2volume` | **Trivial** | One determinant per simplex. Phase 1 exposes only the exact *sign*; the Bareiss code computes the value and needs only a public entry point |
 | Configuration generators (`cube`, `cross`, `cyclic`, `hypersimplex`, `lattice`, `permutahedron`) | **Trivial**, ~150 LOC total | Standalone constructors; worth adding early anyway as test fixtures |
 | `chiro2dual`, `points2gale` | **Small**, ~150 LOC | Gale duality is exact linear algebra on `Config`; slot is reserved at `om/gale.rs` |
 | `points2mintriang` | **Moderate**, ~300 LOC | Branch-and-bound reusing the Phase 5 extension graph |
@@ -446,8 +451,8 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | | Phase | Ships | Risk | Status |
 |---|---|---|---|---|
 | 0 | Reference corpus and scaffolding | *(nothing user-visible)* | low | ✅ **done** |
-| 1 | Exact arithmetic and configuration core | the configuration classes | high | ▶ **next** |
-| 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ⬜ |
+| 1 | Exact arithmetic and configuration core | the configuration classes | high | ✅ **done** |
+| 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ▶ **next** |
 | 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ⬜ |
 | 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ⬜ |
 | 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ⬜ |
@@ -492,7 +497,7 @@ can be taken in either order, or in parallel.
 **Exit criteria:** `maturin develop` works; `import triangulumancer` succeeds; fixture corpus
 committed and regenerable; CI green on all platforms including Windows.
 
-### ▶ Phase 1 — Exact arithmetic and the configuration core — **NEXT** *(~750 LOC, high risk)*
+### ✅ Phase 1 — Exact arithmetic and the configuration core — **DONE** *(~2 500 lines of `src/` including docs and unit tests, high risk)*
 
 * `arith::sign_of_det`: the three-tier stack of §5.1.
 * `config::Config`: column-major integer matrix, exact rank, point-vs-vector homogenisation.
@@ -513,7 +518,14 @@ deliberately near-singular ones. Write the validation harness *before* the imple
 matrices; `Config` rank matches the C++ on the whole fixture corpus; configuration tests in
 `test_point_configuration.py` and `test_vector_configuration.py` pass unchanged.
 
-### ⬜ Phase 2 — Oriented-matroid layer, placing and fine triangulations  *(~550 LOC, low–medium risk)*
+**Met.** `tests/sign_of_det.rs` (`differential_million`, `#[ignore]`d) checked 1 000 098
+matrices of sizes 0–8 across eleven families in 37 s (release build), with zero disagreements
+for the full stack and for each tier on its own; the bigint tier was needed on 290 383 of
+them and the `f64` filter decided 538 360. `tests/fixture_rank.rs` checks the rank implied by
+every trusted result in the corpus (19 713 simplices, 24 "not full rank" rejections). Both
+pytest files pass unchanged. The decisions this phase made for later ones are in §13.
+
+### ▶ Phase 2 — Oriented-matroid layer, placing and fine triangulations — **NEXT** *(~550 LOC, low–medium risk)*
 
 * `om::chirotope`: lazy, memoised chirotope over `sign_of_det`, behind the
   `OrientedMatroid` trait of §6.1. **From here on, no algorithm in `triang/` takes a
@@ -729,29 +741,135 @@ feature.)*
 
 ## 13. Current status
 
-**Phase 0 is complete; Phase 1 is next.** Nothing in phases 1–7 has been started. The phase
-table in §7 is the at-a-glance version; this section is the detail.
+**Phases 0 and 1 are complete; Phase 2 is next.** Nothing in phases 2–7 has been started.
+The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
 |---|---|
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` clean on both feature sets; 4 unit tests |
-| Python | `import triangulumancer` works; `pytest` gives 16 skips, each naming its phase |
+| Rust | `cargo build` / `test` / `clippy` clean on both feature sets; 40 tests, plus the `#[ignore]`d 10⁶-matrix run |
+| Python | `pytest`: 6 pass (both configuration test files), 10 skip, each naming its phase |
 | Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0` |
 
 ### What exists in `src/`
 
-Only `lib.rs` (the `ConfigKind` point/vector distinction, plus the layering doc comment),
-`error.rs` (the `#[non_exhaustive] Error` enum), and `python.rs` (the full 0.3 API surface as
-`todo()` stubs). **No algorithms.** The module tree in §4 is the target, not the current state.
+| Module | Contents |
+|---|---|
+| `lib.rs` | `ConfigKind`, the layering doc comment |
+| `error.rs` | the `#[non_exhaustive] Error` enum; Phase 1 added `InvalidShape` and `IndexOutOfRange` |
+| `arith.rs`, `arith/{filter,bareiss}.rs` | `Sign`, `SquareMatrix`, `sign_of_det`, `rank`; the three tiers, each public on its own |
+| `config.rs`, `config/hull.rs` | `Config<K: Kind>` with markers `Points`/`Vectors`, `Lockable<K>`, `reduce_to_hull` |
+| `simplex.rs` | `Simplex` (bitset), `SimplexSet` (canonically ordered set of simplices) |
+| `python.rs` | configuration classes real; triangulation and flip classes still `todo()` stubs |
+
+`om/`, `triang/`, `regular/` and `symmetry.rs` from §4 do not exist yet.
+
+Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
+`cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s) and
+`tests/fixture_rank.rs` (rank against the corpus, and the B4 hulls). The latter's corpus
+reader (`flate2` + `serde_json`, dev-dependencies only) is what Phase 2's fixture tests should
+reuse — move it to `tests/common/` when a second test file needs it.
+
+### Phase 1 decisions later phases depend on
+
+**Determinants (`arith`).**
+
+* The API is `arith::sign_of_det(&[i64], n) -> Result<Sign>`; the only error is a
+  wrong-length slice. Row- or column-major does not matter (transpose). `n ≤ 2` is answered
+  directly in `i128`; from `n = 3` the three tiers run in order:
+  `filter::sign_of_det` → `bareiss::sign_of_det_i128` → `bareiss::sign_of_det_bigint`.
+  Up to `n = 8` nothing allocates before the bigint tier.
+* The filter is **interval Gaussian elimination**, rounding to nearest and widening each
+  result outward by one ulp (sound without rounding-mode control; inputs beyond `2^53` enter
+  as one-ulp intervals). It declines every singular matrix by construction, so **an exact zero
+  always costs one `i128` Bareiss run**. Chirotopes of degenerate configurations are full of
+  zeros; if Phase 7 profiling shows that matters, a cheap exact-zero pre-check is the lever.
+* **Entries are `i64` only.** Phase 6 needs more: `|p|²` needs `i128`, and scaled `f64`
+  weights need bigints (§5.1). The Bareiss code is already generic over an `Exact` trait with
+  `i128` and `IBig` instances; Phase 6 should add an entry-type parameter (or a separate
+  `sign_of_det` over `i128`/`IBig` entries) rather than squeezing lifts into `i64`. The
+  filter's `Interval::from_i64` generalises the same way.
+* **`robust` is not used.** Its predicates take `f64` coordinates — exact for integers only
+  up to `2^53` — and are point predicates (`orient2d(a, b, c)`), not general determinant
+  signs. A `2 × 2` integer determinant is exact in `i128` with no help, and `3 × 3` gains
+  little over the filter. It may still pay off in Phase 6 for `orient2d`/`orient3d`/`incircle`
+  /`insphere` on lifted lattice points with small coordinates; benchmark it then rather than
+  adding it on spec.
+
+**Configurations (`config`).**
+
+* `Config<K: Kind>` with zero-sized markers `Points` and `Vectors`, aliases `PointConfig` and
+  `VectorConfig`. Storage is the **homogenised** matrix, column-major `i64`, so a column is the
+  `r`-vector the chirotope sees. `ConfigKind` remains as the value-level mirror (`K::KIND`).
+* **The OM layer's entry point is `Config::sign_of_simplex(&Simplex)`**: the sign of the
+  determinant of the homogenised columns in *increasing label order*, i.e. TOPCOM's `χ(B)`.
+  It requires exactly `rows()` labels. `Config::sign_of_columns` takes an explicit order.
+  Phase 2's `Chirotope` should wrap a `&Config<K>` (or an `Arc`) and memoise this; it must
+  call `require_full_rank()` first, which yields the oracle's "not full rank" rejection as
+  `Error::NotFullRank` (the corpus records that rejection for every TOPCOM method on
+  rank-deficient input, so the TOPCOM methods should keep it rather than reduce).
+* `rank()` is exact (fraction-free elimination, `i128` then bigint) and recomputed per call;
+  cache it in the frozen form if it shows up in profiles.
+* **Locking** is `config::Lockable<K>`: an `Arc<Config<K>>` plus a flag. The Python classes
+  hold one; Phase 2's triangulation methods call `lock()` (which needs `&mut self` on the
+  pyclass) and keep the returned `Arc`. The `Triangulation` pyclass will need an enum over
+  `Arc<Config<Points>>` / `Arc<Config<Vectors>>`, since it serves both kinds.
+* An empty configuration takes its dimension from the first addition (0.3 did this when
+  `dim == 0`; the rule is now `len == 0`). Shape and dimension errors are `ValueError`
+  (0.3: `RuntimeError`), per §10; adding to a locked configuration is still `RuntimeError`.
+
+**Affine hull (`config::hull`).**
+
+* `reduce_to_hull()` re-expresses the configuration, same labels and order, in the basis of
+  the lattice **generated by** the differences `p_i − p_0` (vectors: by the vectors) — the
+  column-style HNF of the generators. Not the saturated lattice `aff(P) ∩ Z^d`: normalised
+  volumes after reduction are relative to the configuration's own lattice. A full-rank
+  configuration is returned unchanged. Coordinates that do not fit `i64` are
+  `Error::Overflow`, not a panic.
+* It preserves the oriented matroid up to one global sign (tested by embedding random
+  full-rank configurations and comparing all chirotope signs), but **not the metric**.
+  **Phase 6 must compute lift heights from the original coordinates** (`|p|² − w`) and
+  triangulate the reduced points with those heights; that is sound because the regular
+  subdivision induced by fixed heights is invariant under affine isomorphisms. Delaunay is the
+  same with `w = 0`.
+
+**Simplices (`simplex`).**
+
+* `Simplex` is a bitset stored **inline as a `u128` for labels below 128, spilling to a boxed
+  word slice above**; the representation is canonical, so derived `Eq`/`Hash` are correct. It
+  is `Clone`, not `Copy` (because of the spill), and cheap to clone inline. There is **no cap
+  on the number of points**: the corpus needs at most 16, the exhaustive tier 8, but placing
+  and fine triangulations of configurations with hundreds of points are realistic.
+  `as_bits()` exposes the `u128` for hand-written fast paths. Phase 7 can measure whether a
+  const-generic fixed width beats this.
+* `Ord` is **lexicographic on sorted label lists** — the canonical order of §5.6, the same
+  order Python gives `sorted(simplex)` lists — computed with bit operations, not by
+  materialising lists.
+* `SimplexSet` is a `BTreeSet<Simplex>` newtype, so iteration is canonical and two
+  triangulations with the same simplices are equal and hash equally. `support`, `star`,
+  `link`, `join`, `join_simplex`, `insert_boundary` follow TOPCOM's `SimplicialComplex`
+  semantics (including the empty simplex as the link of a listed simplex). This is option (1)
+  of [`TOPCOM.md` §2.4](TOPCOM.md); interning simplices per enumeration is Phase 5/7's call.
+
+**Fixtures.** `single_point`'s Delaunay and weighted results are B4-affected but were not
+marked `untrusted` (B4 was marked by tag only). `gen_fixtures.py` now also marks a point
+configuration whose placing triangulation the oracle rejected as not full rank, and the entry
+was regenerated with `--only single_point`; its results are byte-identical, only `untrusted`
+changed.
 
 ### Verified vs not
 
 Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
 with `-D warnings`, `cargo fmt --check` passes, `prek -a` passes all hooks, the extension
 imports, pytest collects and skips cleanly, and the fixture generator runs end to end.
+
+Phase 1 was verified locally on Linux x86_64, Python 3.13: `cargo test`, clippy with
+`-D warnings` on both feature sets, `cargo fmt --check`, `prek -a`, pytest (6 pass, 10
+skip), the 10⁶-matrix harness in release, and `gen_fixtures.py --only single_point`. Phase 1
+has **not** yet been through CI; nothing in it is platform-specific, but the `f64` filter's
+soundness argument assumes IEEE round-to-nearest, which holds on all four CI targets.
 
 **Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
@@ -808,13 +926,13 @@ git clone git@github.com:ariostas/triangulumancer.git
 cd triangulumancer
 git checkout rust-migration
 
-cargo test                                      # should pass, 4 tests
+cargo test                                      # should pass, 40 tests (1 ignored)
 cargo clippy --all-targets -- -D warnings
 cargo clippy --features python --all-targets -- -D warnings
 
 uv venv .venv-dev
 VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
-.venv-dev/bin/python -m pytest                  # should give 16 skips, 0 failures
+.venv-dev/bin/python -m pytest                  # should give 6 passes, 10 skips
 
 prek -a --quiet                                 # all hooks should pass
 ```
@@ -861,27 +979,31 @@ regenerating to do any of phases 1–7.
 
 Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
 
-### Starting Phase 1
+### Starting Phase 2
 
-In order, and note that the harness comes first:
+Phase 1's steps are done (they are recorded in §7). For Phase 2, in order:
 
-1. `tests/` — the differential harness for `sign_of_det`: a naive `BigInt` cofactor expansion
-   (`O(n!)`, fine for `n ≤ 8`) over random and deliberately near-singular matrices. Write it
-   before the implementation. §6 of `CGAL.md` and §8 of `TOPCOM.md` are the references.
-2. `src/arith/` — the three-tier stack of §5.1: f64 filter, `i128` Bareiss, bigint Bareiss.
-   Add `dashu-int = "0.6"` to `Cargo.toml` at this point (§4 explains why it is not there yet).
-3. `src/config.rs` + `src/config/hull.rs` — the configuration matrix, exact rank, and the HNF
-   affine-hull reduction. This is what fixes B4.
-4. `src/simplex.rs` — the bitset `Simplex` and `SimplexSet`.
-5. `src/python.rs` — replace the `todo()` stubs for `dim`, `n_points`/`n_vectors`,
-   `points`/`vectors`, `add_point(s)`/`add_vector(s)`, `__repr__`, and the locking behaviour.
-   Add `numpy` usage here; the dependency is already declared.
+1. `src/om/mod.rs` — the `OrientedMatroid` trait of §6.1 (`rank`, `n`, `sign(&Simplex)`).
+2. `src/om/chirotope.rs` — a lazy, memoised `Chirotope` over `Config::sign_of_simplex`
+   (§13, "Phase 1 decisions"). Call `require_full_rank()` when building it. Cache signs
+   only (`i8`/`Sign`), keyed by `Simplex`. A differential test against `points2chiro` output
+   is part of the exit criteria.
+3. `src/symmetry.rs` — the `Symmetry` trait and `TrivialGroup` of §6.2.
+4. `src/triang/` — `placing.rs` and `fine.rs`, taking `&impl OrientedMatroid` only, returning
+   a `SimplexSet`. [`TOPCOM.md` §3–§4](TOPCOM.md) are the references, including the fork's
+   `FineTriang` patch.
+5. `src/python.rs` — `placing_triangulation`, `fine_triangulation`, and the `Triangulation`
+   class (`simplices`, `n_simplices`, `dim`, `__repr__` from
+   `git show legacy-cpp:src/triangulumancer/Triangulation.cpp`), locking the configuration
+   through `Lockable::lock`.
 
-Phase 1 is done when `test_point_configuration.py` and `test_vector_configuration.py` pass
-rather than skip, and the `sign_of_det` harness is green on ≥10⁶ matrices.
+Phase 2 is done when the placing and fine fixtures match over the whole corpus (as sets and
+in canonical order) and the chirotope matches `points2chiro`.
 
 ### A warning about the `__repr__` strings
 
 The 0.3 strings are asserted nowhere in the test suite but are in the README's doctest-style
 example, e.g. `A 2-dimensional point configuration with 9 points`. Reproduce them exactly;
 they are recoverable from `git show legacy-cpp:src/triangulumancer/PVConfiguration.cpp`.
+The configuration strings are done (Phase 1, `impl Display for Config`, unit-tested); the
+`Triangulation` and `Flip` ones are in `Triangulation.cpp` and `Flip.cpp`.
