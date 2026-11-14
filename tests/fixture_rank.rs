@@ -13,62 +13,11 @@
 //! requires. For the rank-deficient entries the affine-hull reduction is
 //! checked too: it is what fixes bug B4.
 
-use std::fs::File;
-use std::path::Path;
+mod common;
 
-use flate2::read::GzDecoder;
+use common::{build, corpus, triangulations, untrusted};
 use serde_json::Value;
 use triangulumancer::config::{Config, Kind, PointConfig, VectorConfig};
-
-fn corpus() -> Value {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/core.json.gz");
-    let file = File::open(&path).expect("fixture corpus present");
-    serde_json::from_reader(GzDecoder::new(file)).expect("fixture corpus is valid JSON")
-}
-
-fn build<K: Kind>(matrix: &[Value]) -> Config<K> {
-    let rows: Vec<Vec<i64>> = matrix
-        .iter()
-        .map(|r| {
-            r.as_array()
-                .unwrap()
-                .iter()
-                .map(|x| x.as_i64().unwrap())
-                .collect()
-        })
-        .collect();
-    let dim = rows.first().map_or(0, Vec::len);
-    let flat: Vec<i64> = rows.concat();
-    Config::from_row_major(&flat, rows.len(), dim).unwrap()
-}
-
-/// Every simplex in a result, whatever the method's output shape.
-fn simplices(method: &str, ok: &Value) -> Vec<Vec<i64>> {
-    let list = |v: &Value| -> Vec<Vec<i64>> {
-        v.as_array()
-            .unwrap()
-            .iter()
-            .map(|s| {
-                s.as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|x| x.as_i64().unwrap())
-                    .collect()
-            })
-            .collect()
-    };
-    let items = ok.as_array().unwrap();
-    if method.starts_with("all_") || method == "neighbors_of_placing" {
-        items.iter().flat_map(list).collect()
-    } else if method == "flips_of_placing" {
-        items
-            .iter()
-            .flat_map(|f| [list(&f["pre"]), list(&f["post"])].concat())
-            .collect()
-    } else {
-        list(ok)
-    }
-}
 
 #[derive(Default)]
 struct Tally {
@@ -83,19 +32,14 @@ fn check<K: Kind>(entry: &Value, tally: &mut Tally) {
     let config: Config<K> = build(entry["matrix"].as_array().unwrap());
     let rank = config.rank();
     let rows = config.rows();
-    let untrusted: Vec<&str> = entry["untrusted"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_str().unwrap())
-        .collect();
+    let untrusted = untrusted(entry);
 
     for (method, result) in entry["results"].as_object().unwrap() {
         if untrusted.contains(&method.as_str()) {
             continue;
         }
         if let Some(ok) = result.get("ok") {
-            for s in simplices(method, ok) {
+            for s in triangulations(method, ok).concat() {
                 assert_eq!(
                     rank, rows,
                     "{name}: {method} triangulated a rank-deficient configuration"
