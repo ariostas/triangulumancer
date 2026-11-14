@@ -8,14 +8,18 @@
 //! # Migration status
 //!
 //! The classes below carry the full 0.3 API surface so that the shape of the
-//! package is fixed from the start, but the methods are stubs that raise
+//! package is fixed from the start. The configuration classes are real as of
+//! phase 1; the triangulation methods are stubs that raise
 //! `NotImplementedError` until their phase lands. `python/tests/conftest.py`
 //! turns that exception into a skip, so the pytest suite lights up phase by
 //! phase without any test edits.
 
-use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
+use numpy::ndarray::Array2;
+use numpy::{AllowTypeChange, IntoPyArray, PyArray2, PyArrayLikeDyn};
+use pyo3::exceptions::{PyIndexError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
+use crate::config::{Config, Kind, Lockable, Points, Vectors};
 use crate::error::Error;
 
 impl From<Error> for PyErr {
@@ -24,11 +28,13 @@ impl From<Error> for PyErr {
         match err {
             // Bad input from the caller.
             Error::DimensionMismatch { .. }
+            | Error::InvalidShape { .. }
             | Error::NotFullRank { .. }
             | Error::EmptyConfiguration
             | Error::RankExceedsCount { .. }
             | Error::ParameterCountMismatch { .. }
             | Error::InvalidTriangulation(_) => PyValueError::new_err(msg),
+            Error::IndexOutOfRange { .. } => PyIndexError::new_err(msg),
             // Invalid use, or our own bug.
             Error::Locked | Error::Overflow(_) | Error::Internal(_) => PyRuntimeError::new_err(msg),
         }
@@ -47,45 +53,84 @@ fn todo<T>(what: &str, phase: u8) -> PyResult<T> {
 // Configurations
 // ---------------------------------------------------------------------------
 
+/// An integer array of any shape, converted by numpy (`np.asarray(x, int64)`),
+/// as 0.3's `pybind11::array_t<int64_t>` did.
+type IntArray<'py> = PyArrayLikeDyn<'py, i64, AllowTypeChange>;
+
+/// The data, in row-major order, and the shape of an integer array.
+fn unpack(array: &IntArray<'_>) -> (Vec<i64>, Vec<usize>) {
+    let view = array.as_array();
+    (view.iter().copied().collect(), view.shape().to_vec())
+}
+
+/// A configuration from an optional `(n, dim)` array.
+fn new_config<K: Kind>(matrix: Option<IntArray<'_>>) -> PyResult<Lockable<K>> {
+    let config = match matrix {
+        None => Config::new(),
+        Some(m) => {
+            let (data, shape) = unpack(&m);
+            Config::from_array(&data, &shape)?
+        }
+    };
+    Ok(Lockable::new(config))
+}
+
+/// Append a `(dim,)` or `(n, dim)` array.
+fn extend_config<K: Kind>(config: &mut Lockable<K>, matrix: &IntArray<'_>) -> PyResult<()> {
+    let (data, shape) = unpack(matrix);
+    Ok(config.modify()?.extend_from_array(&data, &shape)?)
+}
+
+/// The coordinates as an `int64` array of shape `(n, dim)`.
+fn coordinates<'py, K: Kind>(
+    py: Python<'py>,
+    config: &Config<K>,
+) -> PyResult<Bound<'py, PyArray2<i64>>> {
+    let array = Array2::from_shape_vec((config.len(), config.dim()), config.to_row_major())
+        .map_err(|_| Error::Internal("coordinate array shape"))?;
+    Ok(array.into_pyarray(py))
+}
+
 /// A configuration of points in affine space.
 #[pyclass(module = "triangulumancer")]
-pub struct PointConfiguration {}
+pub struct PointConfiguration {
+    inner: Lockable<Points>,
+}
 
 #[pymethods]
 impl PointConfiguration {
     #[new]
     #[pyo3(signature = (matrix = None))]
-    fn new(matrix: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        let _ = matrix;
-        todo("PointConfiguration", 1)
+    fn new(matrix: Option<IntArray<'_>>) -> PyResult<Self> {
+        Ok(Self {
+            inner: new_config(matrix)?,
+        })
     }
 
-    fn __repr__(&self) -> PyResult<String> {
-        todo("PointConfiguration.__repr__", 1)
-    }
-
-    #[getter]
-    fn dim(&self) -> PyResult<usize> {
-        todo("PointConfiguration.dim", 1)
+    fn __repr__(&self) -> String {
+        self.inner.get().to_string()
     }
 
     #[getter]
-    fn n_points(&self) -> PyResult<usize> {
-        todo("PointConfiguration.n_points", 1)
+    fn dim(&self) -> usize {
+        self.inner.get().dim()
     }
 
     #[getter]
-    fn points(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let _ = py;
-        todo("PointConfiguration.points", 1)
+    fn n_points(&self) -> usize {
+        self.inner.get().len()
     }
 
-    fn add_point(&mut self, matrix: &Bound<'_, PyAny>) -> PyResult<()> {
-        let _ = matrix;
-        todo("PointConfiguration.add_point", 1)
+    #[getter]
+    fn points<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<i64>>> {
+        coordinates(py, self.inner.get())
     }
 
-    fn add_points(&mut self, matrix: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn add_point(&mut self, matrix: IntArray<'_>) -> PyResult<()> {
+        extend_config(&mut self.inner, &matrix)
+    }
+
+    fn add_points(&mut self, matrix: IntArray<'_>) -> PyResult<()> {
         self.add_point(matrix)
     }
 
@@ -126,43 +171,44 @@ impl PointConfiguration {
 
 /// A configuration of vectors in linear space.
 #[pyclass(module = "triangulumancer")]
-pub struct VectorConfiguration {}
+pub struct VectorConfiguration {
+    inner: Lockable<Vectors>,
+}
 
 #[pymethods]
 impl VectorConfiguration {
     #[new]
     #[pyo3(signature = (matrix = None))]
-    fn new(matrix: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        let _ = matrix;
-        todo("VectorConfiguration", 1)
+    fn new(matrix: Option<IntArray<'_>>) -> PyResult<Self> {
+        Ok(Self {
+            inner: new_config(matrix)?,
+        })
     }
 
-    fn __repr__(&self) -> PyResult<String> {
-        todo("VectorConfiguration.__repr__", 1)
-    }
-
-    #[getter]
-    fn dim(&self) -> PyResult<usize> {
-        todo("VectorConfiguration.dim", 1)
+    fn __repr__(&self) -> String {
+        self.inner.get().to_string()
     }
 
     #[getter]
-    fn n_vectors(&self) -> PyResult<usize> {
-        todo("VectorConfiguration.n_vectors", 1)
+    fn dim(&self) -> usize {
+        self.inner.get().dim()
     }
 
     #[getter]
-    fn vectors(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let _ = py;
-        todo("VectorConfiguration.vectors", 1)
+    fn n_vectors(&self) -> usize {
+        self.inner.get().len()
     }
 
-    fn add_vector(&mut self, matrix: &Bound<'_, PyAny>) -> PyResult<()> {
-        let _ = matrix;
-        todo("VectorConfiguration.add_vector", 1)
+    #[getter]
+    fn vectors<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<i64>>> {
+        coordinates(py, self.inner.get())
     }
 
-    fn add_vectors(&mut self, matrix: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn add_vector(&mut self, matrix: IntArray<'_>) -> PyResult<()> {
+        extend_config(&mut self.inner, &matrix)
+    }
+
+    fn add_vectors(&mut self, matrix: IntArray<'_>) -> PyResult<()> {
         self.add_vector(matrix)
     }
 

@@ -26,6 +26,22 @@ pub enum Error {
         found: usize,
     },
 
+    /// An input array has the wrong number of dimensions.
+    InvalidShape {
+        /// What was expected, e.g. `"a two-dimensional array"`.
+        expected: &'static str,
+        /// The number of dimensions found.
+        found: usize,
+    },
+
+    /// A point or vector index is out of range.
+    IndexOutOfRange {
+        /// The offending index.
+        index: usize,
+        /// The number of points or vectors.
+        len: usize,
+    },
+
     /// More points or vectors were added after the configuration was used to
     /// build a triangulation.
     ///
@@ -83,6 +99,15 @@ impl fmt::Display for Error {
             Self::DimensionMismatch { expected, found } => {
                 write!(f, "dimension mismatch: expected {expected}, found {found}")
             }
+            Self::InvalidShape { expected, found } => {
+                write!(f, "expected {expected}, found {found} dimensions")
+            }
+            Self::IndexOutOfRange { index, len } => {
+                write!(
+                    f,
+                    "index {index} is out of range for {len} points or vectors"
+                )
+            }
             Self::Locked => write!(
                 f,
                 "the configuration is locked because a triangulation of it exists, \
@@ -131,6 +156,11 @@ mod tests {
                 expected: 3,
                 found: 2,
             },
+            Error::InvalidShape {
+                expected: "a two-dimensional array",
+                found: 3,
+            },
+            Error::IndexOutOfRange { index: 5, len: 3 },
             Error::Locked,
             Error::NotFullRank { rank: 2, rows: 3 },
             Error::EmptyConfiguration,

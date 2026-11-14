@@ -17,8 +17,12 @@
 //! The crate is organised in three layers, and the boundary between them is
 //! load-bearing (see `PLAN.md` section 6):
 //!
-//! * `config` — integer point/vector configurations and exact linear algebra
-//!   over them. Coordinates live here and nowhere else, apart from `regular`.
+//! * [`arith`] — the exact determinant sign every predicate in the crate
+//!   reduces to, and exact rank.
+//! * [`config`] — integer point/vector configurations and exact linear algebra
+//!   over them, including the reduction to the affine hull. Coordinates live
+//!   here and nowhere else, apart from `regular`.
+//! * [`simplex`] — simplices as bitsets of labels, and sets of simplices.
 //! * `om` — the oriented-matroid layer: chirotope, circuits, cocircuits. Built
 //!   *from* a configuration, and the only thing the combinatorial algorithms
 //!   consume.
@@ -35,7 +39,10 @@
 //! [`CGAL.md`]: https://github.com/ariostas/triangulumancer/blob/main/CGAL.md
 //! [`TOPCOM.md`]: https://github.com/ariostas/triangulumancer/blob/main/TOPCOM.md
 
+pub mod arith;
+pub mod config;
 pub mod error;
+pub mod simplex;
 
 #[cfg(feature = "python")]
 pub mod python;
