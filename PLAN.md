@@ -10,18 +10,22 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phases 0–1 complete. **Phase 2 is next.**
+> ## ▶ Status: Phases 0–2 complete. **Phase 3 is next.**
 >
-> Branch `rust-migration`. `src/` now has the foundation: exact determinant signs
-> (`arith`), integer configurations with exact rank and affine-hull reduction (`config`),
-> and bitset simplices (`simplex`). The Python configuration classes are real; every
-> triangulation method is still a `NotImplementedError` stub. `om/`, `triang/`, `regular/`
-> and `symmetry.rs` in §4 do not exist yet.
+> Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
+> integer configurations with exact rank and affine-hull reduction (`config`), bitset
+> simplices (`simplex`) — and, from Phase 2, the oriented-matroid layer (`om`: the
+> `OrientedMatroid` trait, a lazy `Chirotope`, `Circuit`), the `Symmetry` seam, and
+> `triang` (the `Triangulation` type with a full validity check, placing and fine).
+> Python ships `placing_triangulation`, `fine_triangulation` and a real `Triangulation`
+> class; flips, neighbours, the enumerations and the CGAL methods are still
+> `NotImplementedError` stubs. `regular/`, `om/cocircuit.rs` and `triang/flip*` in §4 do
+> not exist yet.
 >
 > * **§7** — the phase table and what each phase ships.
-> * **§13** — what exists, what CI has verified, and **the Phase 1 decisions later phases
->   build on**.
-> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 2.
+> * **§13** — what exists, what CI has verified, and **the Phase 1 and Phase 2 decisions
+>   later phases build on**.
+> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 3.
 >
 > *Finishing a phase means updating this banner and the table in §7, alongside §13.*
 
@@ -452,8 +456,8 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 |---|---|---|---|---|
 | 0 | Reference corpus and scaffolding | *(nothing user-visible)* | low | ✅ **done** |
 | 1 | Exact arithmetic and configuration core | the configuration classes | high | ✅ **done** |
-| 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ▶ **next** |
-| 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ⬜ |
+| 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ✅ **done** |
+| 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ▶ **next** |
 | 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ⬜ |
 | 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ⬜ |
 | 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ⬜ |
@@ -525,7 +529,7 @@ them and the `f64` filter decided 538 360. `tests/fixture_rank.rs` checks the ra
 every trusted result in the corpus (19 713 simplices, 24 "not full rank" rejections). Both
 pytest files pass unchanged. The decisions this phase made for later ones are in §13.
 
-### ▶ Phase 2 — Oriented-matroid layer, placing and fine triangulations — **NEXT** *(~550 LOC, low–medium risk)*
+### ✅ Phase 2 — Oriented-matroid layer, placing and fine triangulations — **DONE** *(~1 300 lines of `src/` including docs and unit tests, low–medium risk)*
 
 * `om::chirotope`: lazy, memoised chirotope over `sign_of_det`, behind the
   `OrientedMatroid` trait of §6.1. **From here on, no algorithm in `triang/` takes a
@@ -541,7 +545,20 @@ including the 46-simplex degenerate vector configuration that "fails in TOPCOM 1
 Additionally, the chirotope itself matches `points2chiro` output — a differential test worth
 having on its own, and the one that validates the §6.1 boundary.
 
-### ⬜ Phase 3 — Circuits, flips and neighbours  *(~750 LOC, medium–hard risk)*
+**Met.** `tests/fixture_triang.rs` matches both methods on all 31 corpus entries — 56
+triangulations identical simplex for simplex in canonical order, and the 6 "not full rank"
+rejections — including the 46-simplex `vc_degenerate_flip`. TOPCOM itself was built from
+the pinned checkout (GMP only; recipe in `scripts/gen_topcom_fixtures.py`) and
+`tests/topcom.rs` checks, against its `points2chiro`, `points2placingtriang` and
+`points2finetriang`, 306 configurations (6 named, 300 seeded-random and mostly
+degenerate): 300 chirotopes (38 660 signs) and 612 triangulations, all identical. The same
+test reruns placing and fine on a chirotope *parsed from TOPCOM's text*, with no
+configuration in sight, which is the §6.1 boundary exercised. Beyond the brief,
+`Triangulation::check` (a port of TOPCOM's `CheckTriang`) accepts all 3 353 whole
+triangulations in the corpus and rejects all 77 871 corruptions of them (one simplex
+dropped, or one foreign simplex added). The Phase 2 decisions are in §13.
+
+### ▶ Phase 3 — Circuits, flips and neighbours — **NEXT** *(~750 LOC, medium–hard risk)*
 
 * `om::circuit`: `Circuit`, `containment_ok`, `link_ok` — in `om/`, not `triang/`, per §6.1.
 * `triang::flip`: `FlipRep`, naive (recompute-all) flip enumeration and application.
@@ -741,7 +758,7 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0 and 1 are complete; Phase 2 is next.** Nothing in phases 2–7 has been started.
+**Phases 0, 1 and 2 are complete; Phase 3 is next.** Nothing in phases 3–7 has been started.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
@@ -749,9 +766,9 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` clean on both feature sets; 40 tests, plus the `#[ignore]`d 10⁶-matrix run |
-| Python | `pytest`: 6 pass (both configuration test files), 10 skip, each naming its phase |
-| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0` |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 69 tests, plus the `#[ignore]`d 10⁶-matrix run |
+| Python | `pytest`: 16 pass, 8 skip, each skip naming its phase |
+| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 306 configurations, 25 KiB, TOPCOM's own CLI tools |
 
 ### What exists in `src/`
 
@@ -761,16 +778,25 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `error.rs` | the `#[non_exhaustive] Error` enum; Phase 1 added `InvalidShape` and `IndexOutOfRange` |
 | `arith.rs`, `arith/{filter,bareiss}.rs` | `Sign`, `SquareMatrix`, `sign_of_det`, `rank`; the three tiers, each public on its own |
 | `config.rs`, `config/hull.rs` | `Config<K: Kind>` with markers `Points`/`Vectors`, `Lockable<K>`, `reduce_to_hull` |
-| `simplex.rs` | `Simplex` (bitset), `SimplexSet` (canonically ordered set of simplices) |
-| `python.rs` | configuration classes real; triangulation and flip classes still `todo()` stubs |
+| `simplex.rs` | `Simplex` (bitset), `SimplexSet` (canonically ordered set of simplices), `combinations` (lex-order `k`-subsets) |
+| `om/mod.rs` | the `OrientedMatroid` trait; `check_basis`; `to_topcom_string` (`points2chiro` format) |
+| `om/chirotope.rs` | `Chirotope`, lazy and memoised; `Config::chirotope()` |
+| `om/circuit.rs` | `Circuit` with TOPCOM's orientation, `upper_facets`/`lower_facets` |
+| `symmetry.rs` | `Symmetry`, `TrivialGroup` — as §6.2, verbatim |
+| `triang/mod.rs`, `triang/check.rs` | `Triangulation`; `check`, the port of TOPCOM's `CheckTriang` |
+| `triang/placing.rs`, `triang/fine.rs` | `triang::placing`, `triang::fine` |
+| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation`; flips, neighbours, enumerations, CGAL methods and `Flip` still `todo()` stubs |
 
-`om/`, `triang/`, `regular/` and `symmetry.rs` from §4 do not exist yet.
+`regular/`, `om/cocircuit.rs` and `triang/{flip,flipgraph,extension}` from §4 do not exist
+yet.
 
 Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
-`cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s) and
-`tests/fixture_rank.rs` (rank against the corpus, and the B4 hulls). The latter's corpus
-reader (`flate2` + `serde_json`, dev-dependencies only) is what Phase 2's fixture tests should
-reuse — move it to `tests/common/` when a second test file needs it.
+`cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s),
+`tests/fixture_rank.rs` (rank against the corpus, and the B4 hulls),
+`tests/fixture_triang.rs` (placing and fine against the corpus; `check` over every corpus
+triangulation and its corruptions) and `tests/topcom.rs` (chirotope, placing and fine
+against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
+it with `mod common;`.
 
 ### Phase 1 decisions later phases depend on
 
@@ -859,6 +885,104 @@ configuration whose placing triangulation the oracle rejected as not full rank, 
 was regenerated with `--only single_point`; its results are byte-identical, only `untrusted`
 changed.
 
+### Phase 2 decisions later phases depend on
+
+**The oriented-matroid layer (`om`).**
+
+* `OrientedMatroid` has three required methods — `n()`, `rank()`,
+  `sign(&Simplex) -> Result<Sign>` — and three provided ones that every algorithm so far is
+  written in: `sign_appended(facet, x)` (the orientation of the *ordered* basis
+  `(facet ascending, x)`, TOPCOM's `perm.sign() * chiro(perm)` idiom), `first_basis()`
+  (TOPCOM's `find_non_deg_basis`, lex order) and `lex_extension_sign(prebasis, order)`
+  (TOPCOM's `chiro(prebasis, lex_extension_perm)`, used by the triangulation check now and
+  by the extension graph in Phase 5). `sign` returns a `Result` so that a malformed query is
+  an error rather than a panic; implementers validate with `om::check_basis`. There is a
+  blanket impl for `&T`.
+* `Chirotope` **owns a copy of the homogenised matrix** (as a `VectorConfig`), so it has no
+  lifetime, is `'static`, and does not care whether it came from points or vectors. Its
+  cache is a `RwLock<HashMap<Simplex, Sign>>`: `Send + Sync`, owned per chirotope, nothing
+  global. `Chirotope::new` (or `Config::chirotope()`) calls `require_full_rank()`, so every
+  TOPCOM method rejects rank-deficient input with `Error::NotFullRank`, as the oracle does.
+  Every query takes the read lock; if Phase 5 or 7 profiling shows that, the levers are an
+  unsynchronised variant behind the same trait, or an eager table indexed by combination
+  rank when `C(n, r)` is small.
+* `Circuit` (in `om/circuit.rs`, per §6.1) uses TOPCOM's orientation: `positive()` is the
+  side of the smallest element of the support. `upper_facets()` drops each element of
+  `negative()` and `lower_facets()` each of `positive()`, as `Circuits.cc` does.
+* `om::to_topcom_string` prints TOPCOM's chirotope format. Parsing it takes a dozen lines
+  (`tests/topcom.rs` has a test-only `Table` implementer); a public parser is all that
+  stands between the crate and TOPCOM's `chiro2*` entry points.
+
+**`Triangulation` (`triang`).**
+
+* **Plain data: `{ n, rank, simplices: SimplexSet }`, with no reference to a chirotope or
+  configuration.** Algorithms that need signs take an `&impl OrientedMatroid` alongside.
+  `rank` is the simplex cardinality, not the configuration's row count, so Phase 6's
+  triangulations of hull-reduced rank-deficient configurations (B4) fit unchanged.
+* `Triangulation::new(n, rank, set)` checks **shape only** (cardinality, labels in range);
+  `from_labels` does the same from a row-major `i64` table and also rejects negative and
+  repeated labels and repeated simplices. `check(&om)` is the geometric check. Partial
+  triangulations — 0.3's `Flip.pre`/`Flip.post`, which are the simplices a flip removes and
+  adds — are therefore representable, and **Phase 3 must not `check` them**.
+* `check` is TOPCOM's `CheckTriang`: every simplex a basis; every facet in one simplex with
+  nothing beyond it, or in two on opposite sides; and a lexicographic-extension point
+  inside the first simplex lies in no other. It is the test oracle for Phases 3–6 too:
+  assert it on every flip result, enumerated triangulation and regular triangulation (§8,
+  layer 3).
+* `unused()` is the complement of the support and `is_fine()` is `unused().is_empty()` —
+  the single definition Phases 4 and 5 should filter on. For a regular triangulation
+  `unused()` **is** the hidden-point set, so Phase 6's `hidden_points` needs no new field.
+* `Eq`/`Hash`/`Ord` are derived and canonical, so a `HashSet<Triangulation>` is a correct
+  visited set for Phase 4 (Phase 7 decides whether it is a fast enough one).
+
+**Placing and fine.**
+
+* `placing` keeps the boundary as a `BTreeMap<facet, apex>` instead of recomputing each
+  facet's link in the whole triangulation as TOPCOM does: the same result without an
+  `O(|T|)` scan per facet. `fine` on 200 random points in dimension 4 takes 0.3 s through
+  the Python bindings.
+* `fine` scans simplices in canonical order where TOPCOM scans its intern table. The doc
+  comment proves the two equivalent (the face an unused point subdivides is unique), and
+  306 configurations against the TOPCOM binary confirm it.
+* **TOPCOM's fine triangulation is not always fine**, and the port reproduces that: a zero
+  vector is never flipped in, and a duplicate *replaces* the copy already used (the two
+  form a two-element circuit). In both situations no fine triangulation exists at all, so
+  **Phase 4's B1 fix** (seeding `only_fine` with `fine`) should return nothing when the seed
+  is not fine — which is exactly `KNOWN_DIVERGENT.md`'s `duplicate_points → 0`.
+* Fine's flip-in is a special bistellar flip (the stellar subdivision of a face). Phase 3's
+  general flip application can subsume it, but `fine` must keep producing the same output.
+
+**Python.**
+
+* `Triangulation` is a `frozen` pyclass `{ config: SharedConfig, inner: triang::Triangulation }`,
+  where `SharedConfig` is an enum over `Arc<Config<Points>>` / `Arc<Config<Vectors>>` taken
+  from `Lockable::lock()`. **Phase 3**'s neighbours and `Flip.pre`/`.post` clone the
+  `SharedConfig` and wrap a new `inner`; **Phase 6** wraps its result the same way and adds
+  `hidden_points` as `inner.unused()`. Methods that need signs build a chirotope from the
+  shared configuration per call, which is cheap; caching one in a `OnceLock` on the pyclass
+  is the option if flips end up being called in a loop.
+* The configuration methods go through one helper, `triangulate(py, &mut lockable, f)`, which
+  runs `f` on the chirotope with the GIL released and **locks only on success**: a
+  configuration whose triangulation fails (rank-deficient) stays extendable, as in 0.3,
+  where the lock was taken by the `Triangulation` constructor.
+* `Triangulation(config, simplices, validate=True)` accepts either configuration class (0.3
+  accepted only `PointConfiguration`). Simplices must have `config.rank()` labels;
+  `validate=True` runs `check` and therefore also needs a full-rank configuration
+  (`ValueError` otherwise); `validate=False` keeps only the shape checks. Rows may come in
+  any order and are canonicalised. Locking again happens only on success. `__repr__` is
+  0.3's, verbatim, and `simplices` is canonical, as the fixtures are.
+* There is no `__eq__`/`__hash__` yet; Phase 4 may want them for deduplicating in Python.
+
+**Fixtures.** `tests/fixtures/topcom.json.gz` is generated by
+`scripts/gen_topcom_fixtures.py --topcom-bin DIR` from TOPCOM binaries built out of the
+pinned checkout. The recipe, a ten-line Makefile needing only GMP (no cddlib), is in the
+script's docstring; the build takes about a minute on 8 cores. The CLI tools differ from
+0.3's bindings in rejecting zero vectors and rank below two and in silently reducing
+rank-deficient input, so the generator only feeds them full-rank configurations without
+zero columns (zero vectors are covered by unit tests instead). Extending it with
+`points2circuits`, `points2flips` and `points2ntriangs` is the cheapest strong oracle for
+Phases 3–5.
+
 ### Verified vs not
 
 Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
@@ -870,6 +994,11 @@ Phase 1 was verified locally on Linux x86_64, Python 3.13: `cargo test`, clippy 
 skip), the 10⁶-matrix harness in release, and `gen_fixtures.py --only single_point`. Phase 1
 has **not** yet been through CI; nothing in it is platform-specific, but the `f64` filter's
 soundness argument assumes IEEE round-to-nearest, which holds on all four CI targets.
+
+Phase 2 was verified locally on Linux x86_64, Python 3.13: `cargo test` (69 tests),
+clippy with `-D warnings` and `cargo doc` with `-D warnings` on both feature sets,
+`cargo fmt --check`, `prek -a`, and pytest (16 pass, 8 skip). It has not been through CI
+either; it adds nothing platform-specific.
 
 **Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
@@ -926,13 +1055,13 @@ git clone git@github.com:ariostas/triangulumancer.git
 cd triangulumancer
 git checkout rust-migration
 
-cargo test                                      # should pass, 40 tests (1 ignored)
+cargo test                                      # should pass, 69 tests (1 ignored)
 cargo clippy --all-targets -- -D warnings
 cargo clippy --features python --all-targets -- -D warnings
 
 uv venv .venv-dev
 VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
-.venv-dev/bin/python -m pytest                  # should give 6 passes, 10 skips
+.venv-dev/bin/python -m pytest                  # should give 16 passes, 8 skips
 
 prek -a --quiet                                 # all hooks should pass
 ```
@@ -979,26 +1108,31 @@ regenerating to do any of phases 1–7.
 
 Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
 
-### Starting Phase 2
+### Starting Phase 3
 
-Phase 1's steps are done (they are recorded in §7). For Phase 2, in order:
+Phases 1 and 2 are done (recorded in §7, decisions in §13). For Phase 3, in order:
 
-1. `src/om/mod.rs` — the `OrientedMatroid` trait of §6.1 (`rank`, `n`, `sign(&Simplex)`).
-2. `src/om/chirotope.rs` — a lazy, memoised `Chirotope` over `Config::sign_of_simplex`
-   (§13, "Phase 1 decisions"). Call `require_full_rank()` when building it. Cache signs
-   only (`i8`/`Sign`), keyed by `Simplex`. A differential test against `points2chiro` output
-   is part of the exit criteria.
-3. `src/symmetry.rs` — the `Symmetry` trait and `TrivialGroup` of §6.2.
-4. `src/triang/` — `placing.rs` and `fine.rs`, taking `&impl OrientedMatroid` only, returning
-   a `SimplexSet`. [`TOPCOM.md` §3–§4](TOPCOM.md) are the references, including the fork's
-   `FineTriang` patch.
-5. `src/python.rs` — `placing_triangulation`, `fine_triangulation`, and the `Triangulation`
-   class (`simplices`, `n_simplices`, `dim`, `__repr__` from
-   `git show legacy-cpp:src/triangulumancer/Triangulation.cpp`), locking the configuration
-   through `Lockable::lock`.
+1. Extend `scripts/gen_topcom_fixtures.py` with `points2circuits` and `points2flips`, and
+   build those two binaries the same way (the recipe is in the script's docstring; the
+   TOPCOM checkout is the one from "The upstream sources you will need" above). The core
+   corpus has `flips_of_placing` and `neighbors_of_placing` for 31 configurations;
+   TOPCOM's own tools give hundreds more, including degenerate ones of the kind that broke
+   the fork twice.
+2. `src/om/circuit.rs` — `containment_ok` and `link_ok` (`lib-src/TriangNode.cc:20-76`;
+   [`TOPCOM.md` §2.5](TOPCOM.md)), next to the `Circuit` that already exists; and a
+   `circuits(om)` iterator (TOPCOM's `Circuits`, lex order over `(rank + 1)`-sets) checked
+   against `points2circuits`.
+3. `src/triang/flip.rs` — `FlipRep` enumeration for a `Triangulation`
+   ([`TOPCOM.md` §5.1](TOPCOM.md)), the expanded flip (`Flip.cc:65-115`), and applying one
+   to get a neighbour. Naive recompute-all is the plan; incremental `TriangFlips` is
+   Phase 7. Assert `Triangulation::check` on every neighbour in the tests.
+4. `src/python.rs` — a `Flip` pyclass whose `pre`/`post` are `Triangulation`s sharing the
+   `SharedConfig`, built with `triang::Triangulation::new` and **not** checked (they are
+   partial), `__repr__` from `git show legacy-cpp:src/triangulumancer/Flip.cpp`; then
+   `flips`, `bistellar_flips` and `neighbors`.
 
-Phase 2 is done when the placing and fine fixtures match over the whole corpus (as sets and
-in canonical order) and the chirotope matches `points2chiro`.
+Phase 3 is done when `flips_of_placing` and `neighbors_of_placing` match the corpus (as
+sets, in canonical order) and the circuits match `points2circuits`.
 
 ### A warning about the `__repr__` strings
 

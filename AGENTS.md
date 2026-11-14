@@ -47,6 +47,7 @@ uv venv .venv-dev && VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
 
 python scripts/gen_fixtures.py --list         # inspect the fixture corpus
 python scripts/gen_fixtures.py                # regenerate it (needs network + uv)
+python scripts/gen_topcom_fixtures.py --topcom-bin DIR   # TOPCOM-CLI fixtures (see its docstring)
 ```
 
 ## Conventions
@@ -67,6 +68,12 @@ The reference implementation is the published `triangulumancer==0.3.0` wheel, no
 anything in this tree. `scripts/gen_fixtures.py` installs it into a throwaway
 virtualenv and records the output of every public method over a corpus of
 configurations.
+
+A second fixture file, `tests/fixtures/topcom.json.gz`, records TOPCOM's own
+command-line tools (`points2chiro`, `points2placingtriang`, `points2finetriang`)
+over a few hundred seeded random configurations. It needs TOPCOM binaries built
+from the pinned checkout; `scripts/gen_topcom_fixtures.py` documents how. It
+has no known-bug markings: none of B1–B5 reaches those tools.
 
 The oracle has known bugs that are deliberately not fixed (`PLAN.md` section 3).
 Affected results are listed per entry under `untrusted` in the fixture data, and
