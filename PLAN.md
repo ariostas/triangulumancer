@@ -924,9 +924,17 @@ it with `mod common;`.
 * `rank()` is exact (fraction-free elimination, `i128` then bigint) and recomputed per call;
   cache it in the frozen form if it shows up in profiles.
 * **Locking** is `config::Lockable<K>`: an `Arc<Config<K>>` plus a flag. The Python classes
-  hold one; Phase 2's triangulation methods call `lock()` (which needs `&mut self` on the
-  pyclass) and keep the returned `Arc`. The `Triangulation` pyclass will need an enum over
-  `Arc<Config<Points>>` / `Arc<Config<Vectors>>`, since it serves both kinds.
+  hold one behind a `Mutex` (`ConfigCell` in `python.rs`; the pyclasses are `frozen`, every
+  method takes `&self`). A computation takes `snapshot()` (an `Arc` clone) under the mutex,
+  releases it, computes with the GIL released, and then calls `lock_snapshot(&snapshot)`,
+  which locks only if the configuration is still that `Arc` and otherwise fails with
+  `Error::ModifiedDuringComputation` (`RuntimeError`), leaving it unlocked. `modify()` is
+  copy-on-write (`Arc::make_mut`), so adding points mid-computation never changes the
+  snapshot. Earlier phases held a `&mut self` pyclass borrow across `py.detach`, so any
+  other thread touching the configuration during a computation got `RuntimeError: Already
+  mutably borrowed`; `python/tests/test_threads.py` covers reads, concurrent computations
+  and modification during a computation. The `Triangulation` pyclass holds
+  `SharedConfig`, an enum over `Arc<Config<Points>>` / `Arc<Config<Vectors>>`.
 * An empty configuration takes its dimension from the first addition (0.3 did this when
   `dim == 0`; the rule is now `len == 0`). Shape and dimension errors are `ValueError`
   (0.3: `RuntimeError`), per §10; adding to a locked configuration is still `RuntimeError`.
@@ -1057,8 +1065,8 @@ changed.
   `hidden_points` as `inner.unused()`. Methods that need signs build a chirotope from the
   shared configuration per call, which is cheap; caching one in a `OnceLock` on the pyclass
   is the option if flips end up being called in a loop.
-* The configuration methods go through one helper, `triangulate(py, &mut lockable, f)`, which
-  runs `f` on the chirotope with the GIL released and **locks only on success**: a
+* The configuration methods go through one helper, `ConfigCell::compute(py, f)`, which
+  runs `f` on a snapshot with the GIL released and **locks only on success**: a
   configuration whose triangulation fails (rank-deficient) stays extendable, as in 0.3,
   where the lock was taken by the `Triangulation` constructor.
 * `Triangulation(config, simplices, validate=True)` accepts either configuration class (0.3
@@ -1166,7 +1174,7 @@ takes about 5 minutes on 4 cores.
 **Python.**
 
 * `all_connected_triangulations(only_fine=False)` runs with the GIL released, returns
-  canonical order, and locks the configuration on success (`&mut self` now).
+  canonical order, and locks the configuration on success.
 * `iter_all_connected_triangulations(only_fine=False)` computes the chirotope and seed
   eagerly (so a rank-deficient configuration raises at the call and stays unlocked), locks,
   and returns a `TriangulationIterator`: a frozen pyclass holding the `SharedConfig` and the

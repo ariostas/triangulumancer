@@ -49,6 +49,14 @@ pub enum Error {
     /// configuration is frozen once any triangulation exists.
     Locked,
 
+    /// Points or vectors were added while a triangulation of the configuration
+    /// was being computed, so the result no longer matches it.
+    ///
+    /// The computation works on a snapshot and locks the configuration only
+    /// when it finishes; this is raised instead of locking a configuration
+    /// that has moved on.
+    ModifiedDuringComputation,
+
     /// The configuration does not span its ambient space.
     ///
     /// The 0.3 C++ implementation silently produced a malformed simplices array
@@ -123,6 +131,11 @@ impl fmt::Display for Error {
                 "the configuration is locked because a triangulation of it exists, \
                  so more points or vectors cannot be added"
             ),
+            Self::ModifiedDuringComputation => write!(
+                f,
+                "the configuration was modified while a triangulation of it was being \
+                 computed"
+            ),
             Self::NotFullRank { rank, rows } => {
                 write!(f, "configuration is not full rank: rank {rank} < {rows}")
             }
@@ -175,6 +188,7 @@ mod tests {
             },
             Error::IndexOutOfRange { index: 5, len: 3 },
             Error::Locked,
+            Error::ModifiedDuringComputation,
             Error::NotFullRank { rank: 2, rows: 3 },
             Error::EmptyConfiguration,
             Error::RankExceedsCount { rank: 4, count: 3 },

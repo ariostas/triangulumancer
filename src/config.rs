@@ -424,7 +424,19 @@ impl<K: Kind> Lockable<K> {
         &self.config
     }
 
+    /// A shared handle to the configuration as it is now, without locking it.
+    ///
+    /// For computing a triangulation without holding a borrow of `self`: run
+    /// the computation on the snapshot, then lock with
+    /// [`lock_snapshot`](Self::lock_snapshot).
+    pub fn snapshot(&self) -> Arc<Config<K>> {
+        Arc::clone(&self.config)
+    }
+
     /// Mutable access, for adding points or vectors.
+    ///
+    /// If a [`snapshot`](Self::snapshot) is still alive, the configuration is
+    /// copied first, so the snapshot never changes.
     ///
     /// # Errors
     ///
@@ -433,7 +445,6 @@ impl<K: Kind> Lockable<K> {
         if self.locked {
             return Err(Error::Locked);
         }
-        // Never shared while unlocked, so this does not clone.
         Ok(Arc::make_mut(&mut self.config))
     }
 
@@ -441,6 +452,20 @@ impl<K: Kind> Lockable<K> {
     pub fn lock(&mut self) -> Arc<Config<K>> {
         self.locked = true;
         Arc::clone(&self.config)
+    }
+
+    /// Lock the configuration, provided it is still the one `snapshot` was
+    /// taken of, and return a shared handle to it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ModifiedDuringComputation`] if it was modified since; it is
+    /// then left as it was.
+    pub fn lock_snapshot(&mut self, snapshot: &Arc<Config<K>>) -> Result<Arc<Config<K>>> {
+        if !Arc::ptr_eq(&self.config, snapshot) {
+            return Err(Error::ModifiedDuringComputation);
+        }
+        Ok(self.lock())
     }
 
     /// Whether [`lock`](Self::lock) has been called.
@@ -590,5 +615,25 @@ mod tests {
         assert_eq!(l.modify().err(), Some(Error::Locked));
         assert_eq!(frozen.len(), 1);
         assert!(Arc::ptr_eq(&frozen, &l.lock()));
+        assert!(Arc::ptr_eq(&frozen, &l.lock_snapshot(&frozen).unwrap()));
+    }
+
+    #[test]
+    fn snapshots() {
+        let mut l = Lockable::new(PointConfig::new());
+        l.modify().unwrap().push(&[1, 2]).unwrap();
+        let snap = l.snapshot();
+        // Modifying while a snapshot is alive copies; the snapshot is intact,
+        // and locking against it fails without locking.
+        l.modify().unwrap().push(&[3, 4]).unwrap();
+        assert_eq!((snap.len(), l.get().len()), (1, 2));
+        assert_eq!(
+            l.lock_snapshot(&snap).err(),
+            Some(Error::ModifiedDuringComputation)
+        );
+        assert!(!l.is_locked());
+        let snap = l.snapshot();
+        assert_eq!(l.lock_snapshot(&snap).unwrap().len(), 2);
+        assert!(l.is_locked());
     }
 }
