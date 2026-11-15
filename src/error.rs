@@ -79,6 +79,16 @@ pub enum Error {
         found: usize,
     },
 
+    /// A per-point parameter (a weight or height) is not acceptable: not
+    /// finite, a subnormal `f64`, a zero denominator, or so far from the others
+    /// in magnitude that exact comparison would be unreasonably expensive.
+    InvalidParameter {
+        /// The index of the offending parameter.
+        index: usize,
+        /// Why it was rejected.
+        reason: &'static str,
+    },
+
     /// An exact computation exceeded even the arbitrary-precision path.
     ///
     /// This should be unreachable; it exists so that a bug surfaces as an error
@@ -131,6 +141,9 @@ impl fmt::Display for Error {
                 "the number of parameters must match the number of points: \
                  expected {expected}, found {found}"
             ),
+            Self::InvalidParameter { index, reason } => {
+                write!(f, "invalid parameter at index {index}: {reason}")
+            }
             Self::Overflow(what) => write!(f, "arithmetic overflow in {what}"),
             Self::InvalidTriangulation(why) => write!(f, "invalid triangulation: {why}"),
             Self::Internal(what) => {
@@ -168,6 +181,10 @@ mod tests {
             Error::ParameterCountMismatch {
                 expected: 9,
                 found: 8,
+            },
+            Error::InvalidParameter {
+                index: 2,
+                reason: "not finite",
             },
             Error::Overflow("determinant"),
             Error::InvalidTriangulation("simplices overlap".into()),

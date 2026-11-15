@@ -88,3 +88,4 @@ pub fn triangulations(method: &str, ok: &Value) -> Vec<Vec<Vec<usize>>> {
         vec![simplex_list(ok)]
     }
 }
+pub mod regular;

@@ -66,6 +66,26 @@ is the sharpest single argument in the corpus for the rewrite.
 
 **Phase 6** fixes this by computing the lift exactly.
 
+**Correct values** (asserted in `tests/regular.rs`, `known_divergent_b3`). By
+hand: with heights, the regular triangulation of a square is the diagonal with
+the lower midpoint, and where all four (or five) lifted points are coplanar the
+tie goes as for every other cospherical case (`src/regular/predicates.rs`: the
+lexicographically largest point counts as raised).
+
+| configuration | method | correct |
+|---|---|---|
+| `large_coords_b3` | `heights__alt` | `[[0,1,3],[0,2,3]]` |
+| `large_coords_b3` | `heights__ones`, `heights__ramp` (both coplanar) | `[[0,1,2],[1,2,3]]` |
+| `moderate_coords` | `heights__alt` (centre above the 0–3 diagonal) | `[[0,1,3],[0,2,3]]` |
+| `moderate_coords` | `heights__ones` (all coplanar) | `[[0,1,4],[0,2,4],[1,3,4],[2,3,4]]` |
+| `moderate_coords` | `heights__ramp` (corners coplanar, centre above) | `[[0,1,2],[1,2,3]]` |
+
+These happen to equal the oracle's output — a broken computation landing on
+the right answer, which is why the entries stay untrusted rather than being
+asserted unequal. The same test adds cases beyond the corpus — weights
+`(0, 0, 0, 2·10¹⁰ + 1)` on the square of side `10⁵` (whose `|p|²` overflows 32 bits), correctly
+`[[0,1,3],[0,2,3]]` — and squares with coordinates `2⁶²`.
+
 ## B4 — rank-deficient input yields a malformed simplices array
 
 `CGAL.cpp:87-98` looks vertices up in a `std::map` with `operator[]`, so null
@@ -91,6 +111,14 @@ affine hull rather than producing garbage. Phase 1 checks the hulls themselves �
 the collinear case reduces to the points `0, 1, 2, 3` on a line, the single point
 to dimension 0 — and **phase 6** asserts the triangulations above.
 
+**Asserted** in `tests/regular.rs` (`known_divergent_b4`): for
+`rank_deficient_collinear`, every method except `heights__alt` gives
+`[[0,1],[1,2],[2,3]]`, and `heights__alt` (heights `-1, 0, 1, -1`, so the
+middle points are above the segment) gives `[[0,3]]` with points 1 and 2
+hidden; `single_point` gives `[[0]]`; and `rank_deficient_coplanar_3d` under
+Delaunay gives the cocircular unit square of its own plane, `[[0,1,2],[1,2,3]]`
+(the oracle's rows with the padding `0` removed).
+
 ## B5 — index recovery by coordinate scan
 
 `CGAL.cpp:59-84` maps CGAL vertices back to input indices with an `O(n·V·d)`
@@ -108,6 +136,15 @@ deterministic (lowest index wins) and report the hidden points.
 
 **Phase 6** fixes this by carrying the index through insertion instead of
 recovering it afterwards.
+
+**Asserted** in `tests/regular.rs` (`known_divergent_b5`), for
+`duplicate_points` (points 1 and 3 coincide at `(1, 0)`): the lower lift wins,
+and on equal lifts the lower index. So the survivor is point 3 for
+`heights__alt` (heights `0` vs `-1`) and `weights__ramp` (lifts `1 − 2` vs
+`1 − 4`), and point 1 for the other five results; the simplex is `{0, 2,
+survivor}` and the other copy is the one hidden point. The same test checks
+that distinct points `(2⁶⁰, 0)` and `(2⁶⁰ + 1, 1)`, which are one double apart,
+are both used.
 
 ## Not a bug: timeouts and crashes
 
