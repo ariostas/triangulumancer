@@ -1666,6 +1666,47 @@ degenerate input, and the wide-lift path are all certified by the regularity ora
 long regular fuzz, the long invariance suite and the 50 000-point memory test (peak
 54 MiB) pass.
 
+### Review fixes
+
+From the review of the draft PR, after Phase 7:
+
+* **`deploy.yml`** would not have run: cibuildwheel 4 rejects `CIBW_ENABLE:
+  cpython-freethreading` (free-threaded builds are on by default there), and the workflow
+  ran whatever `pipx run cibuildwheel` resolved to. It now uses the
+  `pypa/cibuildwheel@v4.3.5` action (dependabot bumps it), and the wheel selection
+  (`build`, `skip`) moved to `[tool.cibuildwheel]` in `pyproject.toml`. `python.yml`'s
+  `wheel-selection` job runs `--print-build-identifiers` with that version and
+  configuration for Linux, macOS and Windows on every push, and checks the answer is
+  exactly `cp310`, `cp314` and `cp314t` per platform tag. A `check-release` job (the tag
+  equals the `Cargo.toml` version, and `cargo publish --dry-run` passes) gates both
+  `deploy-pypi` and `deploy-crate`.
+* **MSRV.** One let-chain (Rust 1.88) in `regular/predicates.rs` became nested `if`s; the
+  library, with every feature, checks on 1.85.0, and `rust.yml` has an `msrv` job for it.
+  The dev-dependencies need more (criterion 0.8.2 requires 1.86), so the tests and
+  benchmarks need 1.86; that does not bind users and `rust-version` stays at 1.85.
+* **Chirotope cache.** It memoised every sign forever, so `fine_triangulation()` of a
+  shuffled 60 × 60 grid peaked at 1.4 GiB (80 × 80: 2.8 GiB). It is now bounded at 2¹⁶
+  signs and emptied when full. Alternatives measured: no cache at all up to rank 4 was
+  fastest for `fine` (3.7 s, 29 MiB on 60 × 60) but cost the enumerations 15–40 % and
+  warm `flip_reps` 64 %, since those ask for the same few hundred signs over and over.
+  With the bound, 60 × 60 takes 5.3 s and 39 MiB (was 14.2 s and 1.4 GiB), 80 × 80 16.7 s
+  and 39 MiB (was 65 s and 2.8 GiB), and every `triang` benchmark is within noise of
+  before. `test_large_fine_memory_is_bounded` (40 × 40, fine plus validation, peak under
+  100 MiB; it was ~200 MiB) guards it.
+* **Self-checks** (the full regular-triangulation check after every insertion, and
+  incremental flip sets against the naive ones) ran in every debug build, including
+  dependents', and the second panicked on an invalid `FlipGraph::from_seed` seed, which is
+  documented as unchecked. They are behind the internal `self-check` feature now (and still
+  only with debug assertions), turned on for this repository's tests by a path-only
+  dev-dependency of the crate on itself, which `cargo package` drops.
+* **maturin floor** raised to 1.12: below 1.8.2 `license-files` does not parse, below 1.9.2
+  the licence is not written as `License-Expression`, and below 1.12 the sdist keeps the
+  `[[bench]]` targets without `benches/`, so the sdist does not build.
+* `ConfigKind` is `#[non_exhaustive]`; `TriangulationIterator` is exported from the Python
+  package; the `NotImplementedError`-to-skip pytest hook and the `todo()` helper are gone;
+  `filter::sign_of_det_of` and `bareiss::sign_of_det_{i128,bigint}_of` assert their
+  length (documented under `# Panics`) instead of reading a wrong-sized slice.
+
 ### CI runs on this branch
 
 Both workflows trigger on pushes to `rust-migration` as well as `main`, so every phase
