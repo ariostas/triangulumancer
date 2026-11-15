@@ -190,8 +190,16 @@ const MEDIUM: usize = 144;
 /// `None` if the filter cannot decide (or an entry is beyond the `f64`
 /// range).
 ///
-/// The caller guarantees `m.len() == n * n`.
+/// # Panics
+///
+/// If `m.len() != n * n`; [`arith::sign_of_det_of`](crate::arith::sign_of_det_of)
+/// returns an error instead.
 pub fn sign_of_det_of<T: Entry>(m: &[T], n: usize) -> Option<Sign> {
+    assert!(
+        n.checked_mul(n) == Some(m.len()),
+        "sign_of_det_of: {} entries do not make a {n} x {n} matrix",
+        m.len()
+    );
     with_buffers(m.len(), |mid, rad| {
         for ((dm, dr), x) in mid.iter_mut().zip(rad.iter_mut()).zip(m) {
             (*dm, *dr) = x.approx()?;

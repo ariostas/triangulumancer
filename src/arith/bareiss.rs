@@ -183,8 +183,16 @@ pub fn sign_of_det_bigint(m: SquareMatrix<'_>) -> Sign {
 /// Tier 2 for any [`Entry`] type: Bareiss in checked `i128`. `None` if an
 /// entry does not fit in `i128` or an intermediate overflows.
 ///
-/// The caller guarantees `m.len() == n * n`.
+/// # Panics
+///
+/// If `m.len() != n * n`; [`arith::sign_of_det_of`](crate::arith::sign_of_det_of)
+/// returns an error instead.
 pub fn sign_of_det_i128_of<T: Entry>(m: &[T], n: usize) -> Option<Sign> {
+    assert!(
+        n.checked_mul(n) == Some(m.len()),
+        "sign_of_det_i128_of: {} entries do not make a {n} x {n} matrix",
+        m.len()
+    );
     if m.len() <= INLINE {
         let mut buf = [0i128; INLINE];
         for (dst, x) in buf.iter_mut().zip(m) {
@@ -200,8 +208,16 @@ pub fn sign_of_det_i128_of<T: Entry>(m: &[T], n: usize) -> Option<Sign> {
 /// Tier 3 for any [`Entry`] type: Bareiss over arbitrary-precision integers.
 /// Always succeeds.
 ///
-/// The caller guarantees `m.len() == n * n`.
+/// # Panics
+///
+/// If `m.len() != n * n`; [`arith::sign_of_det_of`](crate::arith::sign_of_det_of)
+/// returns an error instead.
 pub fn sign_of_det_bigint_of<T: Entry>(m: &[T], n: usize) -> Sign {
+    assert!(
+        n.checked_mul(n) == Some(m.len()),
+        "sign_of_det_bigint_of: {} entries do not make a {n} x {n} matrix",
+        m.len()
+    );
     let mut buf: Vec<IBig> = m.iter().map(Entry::to_ibig).collect();
     // Infallible: IBig arithmetic does not overflow.
     det_sign(&mut buf, n).unwrap_or(Sign::Zero)

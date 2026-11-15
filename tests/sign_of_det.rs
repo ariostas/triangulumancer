@@ -655,6 +655,26 @@ fn wide_entries() {
     assert!(arith::sign_of_det_of(&[IBig::ONE; 3], 2).is_err());
 }
 
+/// The single tiers have no error to return for a matrix of the wrong size;
+/// they panic, as documented, rather than read past it or answer for part of it.
+#[test]
+#[should_panic(expected = "do not make a 2 x 2 matrix")]
+fn filter_tier_rejects_the_wrong_length() {
+    let _ = filter::sign_of_det_of(&[1i64; 3], 2);
+}
+
+#[test]
+#[should_panic(expected = "do not make a 2 x 2 matrix")]
+fn i128_tier_rejects_the_wrong_length() {
+    let _ = bareiss::sign_of_det_i128_of(&[1i64; 5], 2);
+}
+
+#[test]
+#[should_panic(expected = "do not make a 2 x 2 matrix")]
+fn bigint_tier_rejects_the_wrong_length() {
+    let _ = bareiss::sign_of_det_bigint_of(&[1i64; 3], 2);
+}
+
 /// Adversarial for the filter's error bound: a singular matrix of rank
 /// `n - 1`, up to `12 x 12`, with one entry moved by `±2^t` for every `t` from
 /// `0` to `62`, so that the determinant (`±2^t` times a cofactor) sweeps from
