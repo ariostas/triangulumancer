@@ -10,13 +10,16 @@
 //! The classes below carry the full 0.3 API surface so that the shape of the
 //! package is fixed from the start. The configuration classes are real as of
 //! phase 1, the placing and fine triangulations and the `Triangulation`
-//! class as of phase 2, and flips and neighbours as of phase 3; the remaining
+//! class as of phase 2, flips and neighbours as of phase 3, and the flip-graph
+//! enumeration as of phase 4; the remaining
 //! methods are stubs that raise
 //! `NotImplementedError` until their phase lands. `python/tests/conftest.py`
 //! turns that exception into a skip, so the pytest suite lights up phase by
 //! phase without any test edits.
 
-use std::sync::Arc;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
 
 use numpy::ndarray::Array2;
 use numpy::{AllowTypeChange, IntoPyArray, PyArray2, PyArrayLikeDyn};
@@ -28,6 +31,7 @@ use pyo3::prelude::*;
 use crate::config::{Config, Kind, Lockable, Points, Vectors};
 use crate::error::{Error, Result};
 use crate::om::Chirotope;
+use crate::symmetry::TrivialGroup;
 use crate::triang;
 
 impl From<Error> for PyErr {
@@ -118,6 +122,55 @@ where
     })
 }
 
+/// `all_connected_triangulations`, with the GIL released while it runs; locks
+/// the configuration on success.
+fn connected<K: Kind>(
+    py: Python<'_>,
+    config: &mut Lockable<K>,
+    only_fine: bool,
+) -> PyResult<Vec<Triangulation>>
+where
+    SharedConfig: From<Arc<Config<K>>>,
+{
+    let frozen = config.get();
+    let all = py.detach(|| {
+        frozen
+            .chirotope()
+            .and_then(|c| triang::all_connected(&c, only_fine))
+    })?;
+    let shared: SharedConfig = config.lock().into();
+    Ok(all
+        .into_iter()
+        .map(|inner| Triangulation {
+            config: shared.clone(),
+            inner,
+        })
+        .collect())
+}
+
+/// `iter_all_connected_triangulations`: the seed is computed here, so that a
+/// rank-deficient configuration fails at the call rather than on the first
+/// `next`, and the configuration is locked once it succeeds.
+fn connected_iter<K: Kind>(
+    py: Python<'_>,
+    config: &mut Lockable<K>,
+    only_fine: bool,
+) -> PyResult<TriangulationIterator>
+where
+    SharedConfig: From<Arc<Config<K>>>,
+{
+    let frozen = config.get();
+    let graph = py.detach(|| {
+        frozen
+            .chirotope()
+            .and_then(|c| triang::FlipGraph::new(c, only_fine))
+    })?;
+    Ok(TriangulationIterator {
+        config: config.lock().into(),
+        search: Mutex::new(graph),
+    })
+}
+
 /// A configuration of points in affine space.
 #[pyclass(module = "triangulumancer")]
 pub struct PointConfiguration {
@@ -169,10 +222,40 @@ impl PointConfiguration {
         triangulate(py, &mut self.inner, triang::fine)
     }
 
+    /// Every triangulation connected to a seed by bistellar flips, in
+    /// canonical order.
+    ///
+    /// The seed is the placing triangulation, or with `only_fine` the fine
+    /// one. With `only_fine`, flips that would remove a point are never
+    /// taken, so the result is the connected component of the fine seed *in
+    /// the flip graph restricted to fine triangulations*: a fine
+    /// triangulation reachable only through non-fine ones is not found
+    /// (`all_triangulations(only_fine=True)` finds every one). With repeated
+    /// points or zero vectors no fine triangulation exists and the result is
+    /// empty. 0.3 seeded `only_fine` with the placing triangulation, which
+    /// returned non-fine triangulations or did not terminate when some point
+    /// lies inside the hull of earlier ones.
     #[pyo3(signature = (only_fine = false))]
-    fn all_connected_triangulations(&self, only_fine: bool) -> PyResult<Vec<Triangulation>> {
-        let _ = only_fine;
-        todo("PointConfiguration.all_connected_triangulations", 4)
+    fn all_connected_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<Vec<Triangulation>> {
+        connected(py, &mut self.inner, only_fine)
+    }
+
+    /// As `all_connected_triangulations`, but yielding the triangulations one
+    /// at a time, in breadth-first order from the seed, as they are found.
+    ///
+    /// Use it to count or filter an enumeration too large to hold. The search
+    /// itself still remembers every triangulation it has seen.
+    #[pyo3(signature = (only_fine = false))]
+    fn iter_all_connected_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<TriangulationIterator> {
+        connected_iter(py, &mut self.inner, only_fine)
     }
 
     #[pyo3(signature = (only_fine = false))]
@@ -247,10 +330,40 @@ impl VectorConfiguration {
         triangulate(py, &mut self.inner, triang::fine)
     }
 
+    /// Every triangulation connected to a seed by bistellar flips, in
+    /// canonical order.
+    ///
+    /// The seed is the placing triangulation, or with `only_fine` the fine
+    /// one. With `only_fine`, flips that would remove a point are never
+    /// taken, so the result is the connected component of the fine seed *in
+    /// the flip graph restricted to fine triangulations*: a fine
+    /// triangulation reachable only through non-fine ones is not found
+    /// (`all_triangulations(only_fine=True)` finds every one). With repeated
+    /// points or zero vectors no fine triangulation exists and the result is
+    /// empty. 0.3 seeded `only_fine` with the placing triangulation, which
+    /// returned non-fine triangulations or did not terminate when some point
+    /// lies inside the hull of earlier ones.
     #[pyo3(signature = (only_fine = false))]
-    fn all_connected_triangulations(&self, only_fine: bool) -> PyResult<Vec<Triangulation>> {
-        let _ = only_fine;
-        todo("VectorConfiguration.all_connected_triangulations", 4)
+    fn all_connected_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<Vec<Triangulation>> {
+        connected(py, &mut self.inner, only_fine)
+    }
+
+    /// As `all_connected_triangulations`, but yielding the triangulations one
+    /// at a time, in breadth-first order from the seed, as they are found.
+    ///
+    /// Use it to count or filter an enumeration too large to hold. The search
+    /// itself still remembers every triangulation it has seen.
+    #[pyo3(signature = (only_fine = false))]
+    fn iter_all_connected_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<TriangulationIterator> {
+        connected_iter(py, &mut self.inner, only_fine)
     }
 
     #[pyo3(signature = (only_fine = false))]
@@ -312,6 +425,15 @@ impl SharedConfig {
         match self {
             Self::Points(c) => c.chirotope(),
             Self::Vectors(c) => c.chirotope(),
+        }
+    }
+
+    /// Whether `self` and `other` are the same configuration object.
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Points(a), Self::Points(b)) => Arc::ptr_eq(a, b),
+            (Self::Vectors(a), Self::Vectors(b)) => Arc::ptr_eq(a, b),
+            _ => false,
         }
     }
 }
@@ -433,6 +555,20 @@ impl Triangulation {
         self.inner.is_fine()
     }
 
+    /// Triangulations are equal when they have the same simplices and belong
+    /// to the same configuration object.
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
+        other
+            .cast::<Triangulation>()
+            .is_ok_and(|o| self.config.same(&o.get().config) && self.inner == o.get().inner)
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.inner.hash(&mut h);
+        h.finish()
+    }
+
     /// Every bistellar flip of this triangulation, ordered by the simplices
     /// each removes and then those it adds.
     fn flips(&self, py: Python<'_>) -> PyResult<Vec<Flip>> {
@@ -517,6 +653,39 @@ impl Flip {
     }
 }
 
+/// An iterator over the triangulations of a flip-graph search, returned by
+/// `iter_all_connected_triangulations`.
+///
+/// Each `next` runs the search with the GIL released until it finds the next
+/// triangulation. The search state is behind a mutex, so the iterator can be
+/// shared between threads; they take turns.
+#[pyclass(module = "triangulumancer", frozen)]
+pub struct TriangulationIterator {
+    config: SharedConfig,
+    search: Mutex<triang::FlipGraph<Chirotope, TrivialGroup>>,
+}
+
+#[pymethods]
+impl TriangulationIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Triangulation>> {
+        let next = py.detach(|| {
+            let mut search = self
+                .search
+                .lock()
+                .map_err(|_| Error::Internal("flip-graph iterator lock poisoned"))?;
+            search.next().transpose()
+        })?;
+        Ok(next.map(|inner| Triangulation {
+            config: self.config.clone(),
+            inner,
+        }))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
@@ -532,6 +701,7 @@ fn register_config(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn register_triang(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Triangulation>()?;
     m.add_class::<Flip>()?;
+    m.add_class::<TriangulationIterator>()?;
     Ok(())
 }
 

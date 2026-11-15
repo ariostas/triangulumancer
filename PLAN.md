@@ -10,7 +10,7 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phases 0–3 complete. **Phase 4 is next.**
+> ## ▶ Status: Phases 0–4 complete. **Phase 5 is next** (Phase 6 is independent of it).
 >
 > Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
 > integer configurations with exact rank and affine-hull reduction (`config`), bitset
@@ -18,15 +18,18 @@ result looks like*, and *how we know it is correct*.
 > `OrientedMatroid` trait, a lazy `Chirotope`, `Circuit`), the `Symmetry` seam, and
 > `triang` (the `Triangulation` type with a full validity check, placing and fine), and,
 > from Phase 3, circuits with TOPCOM's flip predicates and `triang::flip` (flip sets,
-> expansion, application). Python ships `placing_triangulation`, `fine_triangulation`, a
-> real `Triangulation` class, `flips`/`bistellar_flips`/`neighbors` and `Flip`; the
-> enumerations and the CGAL methods are still `NotImplementedError` stubs. `regular/`,
-> `om/cocircuit.rs`, `triang/flipgraph.rs` and `triang/extension/` in §4 do not exist yet.
+> expansion, application), and from Phase 4 `triang::flipgraph` (a streaming BFS, B1
+> fixed). Python ships `placing_triangulation`, `fine_triangulation`, a real
+> `Triangulation` class with `__eq__`/`__hash__`, `flips`/`bistellar_flips`/`neighbors`,
+> `Flip`, and `all_connected_triangulations` plus a streaming
+> `iter_all_connected_triangulations`; `all_triangulations` and the CGAL methods are still
+> `NotImplementedError` stubs. `regular/`, `om/cocircuit.rs` and `triang/extension/` in §4
+> do not exist yet.
 >
 > * **§7** — the phase table and what each phase ships.
 > * **§13** — what exists, what CI has verified, and **the Phase 1 and Phase 2 decisions
 >   later phases build on**.
-> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 4.
+> * **§14** — setup on a fresh machine, and notes for Phase 5.
 >
 > *Finishing a phase means updating this banner and the table in §7, alongside §13.*
 
@@ -459,8 +462,8 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | 1 | Exact arithmetic and configuration core | the configuration classes | high | ✅ **done** |
 | 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ✅ **done** |
 | 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ✅ **done** |
-| 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ▶ **next** |
-| 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ⬜ |
+| 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ✅ **done** |
+| 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ▶ **next** |
 | 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ⬜ |
 | 7 | Parity, performance, release | the 0.4.0 release | low | ⬜ |
 
@@ -582,7 +585,7 @@ the placing and fine triangulations and up to three more per configuration, from
 own flip-graph enumeration — with `check` on every one of the 6 001 neighbours. Nothing
 differed. The Phase 3 decisions are in §13.
 
-### ⬜ Phase 4 — Flip-graph enumeration  *(~250 LOC, medium risk)*
+### ✅ Phase 4 — Flip-graph enumeration — **DONE** *(~300 lines of `src/` including docs and unit tests, medium risk)*
 
 * `triang::flipgraph`: BFS with a single visited set (simpler than TOPCOM's two-layer
   scheme), streaming per §5.4.
@@ -593,6 +596,18 @@ differed. The Phase 3 decisions are in §13.
 
 **Exit criteria:** matches fixtures, including 387/64 for the 3×3 grid. Note the
 known-divergent fixtures from B1 must match the *patched* C++, not `0.3.0`.
+
+**Met.** `tests/flipgraph.rs` matches both methods on every trusted corpus entry the oracle
+finished, as sets in canonical order (48 results, 6 "not full rank" rejections), and all
+six B1 values in `KNOWN_DIVERGENT.md` — including `square_plus_axes`, where 0.3 never
+terminated (64) and `duplicate_points` (0) — each also equal *as a set* to the oracle's
+`all_triangulations(only_fine=True)`. Against TOPCOM, the default run checks the 375
+components of at most 500 triangulations (302 of them as whole sets, every triangulation
+`check`ed); the `#[ignore]`d run checks all 442 `points2ntriangs` counts and all 451
+`points2nfinetriangs` counts — 2.9 million triangulations in about four minutes, release
+build. In 169 of the latter TOPCOM's fine seed is not fine (duplicate points) and the port
+correctly returns nothing (§13). `vc_degenerate_flip` is not enumerated by any test. The
+Phase 4 decisions are in §13.
 
 ### ⬜ Phase 5 — Extension-graph enumeration  *(~1 500 LOC, highest risk)*
 
@@ -754,7 +769,8 @@ everything else there is a matter of *where* code is put rather than how much of
    component of a seed, and with `only_fine` the component in the *induced subgraph on fine
    triangulations* — a fine triangulation reachable only through non-fine intermediates is
    not found. That is an intended TOPCOM limitation, but it is not obvious from the name and
-   should at minimum be documented.
+   should at minimum be documented. *(Phase 4: documented in the Python docstring and in
+   `triang::flipgraph`; the name is unchanged.)*
 3. **`bnum` vs `dashu-int`** for the fallback tier — resolve by benchmark in Phase 7, after
    §5.1's API decision has fixed the bit bound.
 4. **Which of §6.3's "free" items to actually expose in 0.4.0.** Counting variants, the
@@ -771,7 +787,8 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0–3 are complete; Phase 4 is next.** Nothing in phases 4–7 has been started.
+**Phases 0–4 are complete; Phase 5 is next.** Nothing in phases 5 and 7 has been started
+here; Phase 6 is in progress separately.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
@@ -779,8 +796,8 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 78 tests, plus the `#[ignore]`d 10⁶-matrix run |
-| Python | `pytest`: 20 pass, 7 skip, each skip naming its phase |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 85 tests, plus the `#[ignore]`d 10⁶-matrix and full flip-graph runs |
+| Python | `pytest`: 28 pass, 7 skip, each skip naming its phase |
 | Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, 180 KiB, TOPCOM's own CLI tools |
 
 ### What exists in `src/`
@@ -799,18 +816,19 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `triang/mod.rs`, `triang/check.rs` | `Triangulation`; `check`, the port of TOPCOM's `CheckTriang` |
 | `triang/placing.rs`, `triang/fine.rs` | `triang::placing`, `triang::fine` |
 | `triang/flip.rs` | `FlipRep`, `Flip`, `flip_reps` (naive), `flips`, `neighbors` |
-| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`, `Flip`; enumerations and CGAL methods still `todo()` stubs |
+| `triang/flipgraph.rs` | `FlipGraph` (streaming BFS iterator, generic over `Symmetry`), `all_connected` |
+| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations` and `TriangulationIterator`; `all_triangulations` and CGAL methods still `todo()` stubs |
 
-`regular/`, `om/cocircuit.rs` and `triang/{flipgraph,extension}` from §4 do not exist
-yet.
+`regular/`, `om/cocircuit.rs` and `triang/extension` from §4 do not exist yet.
 
 Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s),
 `tests/fixture_rank.rs` (rank against the corpus, and the B4 hulls),
 `tests/fixture_triang.rs` (placing and fine against the corpus; `check` over every corpus
 triangulation and its corruptions), `tests/fixture_flips.rs` (flips and neighbours of
-placing against the corpus) and `tests/topcom.rs` (chirotope, placing, fine, circuits and
-flip sets against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
+placing against the corpus), `tests/flipgraph.rs` (the flip graph against the corpus, the
+B1 values and TOPCOM's enumerators) and `tests/topcom.rs` (chirotope, placing, fine,
+circuits and flip sets against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
 it with `mod common;`.
 
 ### Phase 1 decisions later phases depend on
@@ -1053,6 +1071,50 @@ address-space cap and enumerations under a 20 s timeout (`null` when either is h
 `n == rank` are skipped by the enumeration tools, which fail outright on them. Generation
 takes about 5 minutes on 4 cores.
 
+### Phase 4 decisions later phases depend on
+
+**The search (`triang::flipgraph`).**
+
+* `FlipGraph<O, S = TrivialGroup>` **owns** its oriented matroid (`O` may be `&Chirotope`
+  through the blanket impl, or an owned `Chirotope` — which the Python iterator needs) and
+  is an `Iterator<Item = Result<Triangulation>>`. It is lazy: a triangulation's flips are
+  computed only when the yielded queue runs dry, so `next()` does one node's work at most.
+  Order is breadth-first, neighbours in `flip_reps` order, hence deterministic.
+  `all_connected(om, only_fine)` collects and sorts canonically; it is what the list API
+  returns. After an error the iterator yields nothing more.
+* One `HashSet<Triangulation>` of everything seen; no flip marking. Memory is therefore
+  proportional to the output (plus the frontier), which streaming does not change — only a
+  canonical spanning tree (reverse search) would. Throughput is about 80 µs per
+  triangulation in release on the TOPCOM corpus, with naive flip sets and
+  `BTreeSet`-based triangulations; **Phase 7**'s incremental flips and interning are the
+  levers, and `FlipGraph::expand` is where an incremental `TriangFlips` slots in (it has
+  the parent, the flip and the child at hand).
+* `only_fine`: seed with `fine`, pass `forbid_vertex_removal`, and **yield nothing when the
+  seed is not fine** — `FlipGraph::from_seed` applies the same rule to any seed, so the
+  result is always the seed's component in the subgraph induced on fine triangulations.
+  This is B1 fixed, and it is why the result for repeated points is empty where
+  `points2nfinetriangs` is not. Phase 5's `only_fine` must agree with this wherever the
+  fine flip graph is connected.
+* **Symmetry**: generic over `S: Symmetry`; `stabilizer` is called where TOPCOM adds
+  equivalent flips and `is_orbit_representative` filters output. The visited set is not
+  orbit-aware, so a real group would also need an orbit-canonical form (not in the §6.2
+  trait). With `TrivialGroup` both calls are constants.
+
+**Python.**
+
+* `all_connected_triangulations(only_fine=False)` runs with the GIL released, returns
+  canonical order, and locks the configuration on success (`&mut self` now).
+* `iter_all_connected_triangulations(only_fine=False)` computes the chirotope and seed
+  eagerly (so a rank-deficient configuration raises at the call and stays unlocked), locks,
+  and returns a `TriangulationIterator`: a frozen pyclass holding the `SharedConfig` and the
+  `FlipGraph<Chirotope>` behind a `Mutex`. Each `__next__` releases the GIL and runs the
+  search to the next triangulation; threads sharing one iterator take turns. Order is BFS,
+  not canonical.
+* `Triangulation.__eq__` is true for the same simplices of the **same configuration
+  object** (`Arc::ptr_eq`) — configurations have identity, not value, semantics in 0.3 —
+  and `__hash__` hashes the simplices only. Comparison with a non-`Triangulation` is
+  `False`.
+
 ### Verified vs not
 
 Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
@@ -1074,6 +1136,12 @@ Phase 3 was verified the same way: `cargo test` (78 tests), clippy and `cargo do
 `-D warnings` on both feature sets, `cargo fmt --check`, `prek -a` (which also needed
 three pre-existing `PT011`/formatting fixes in `test_triangulation_api.py`), and pytest
 (20 pass, 7 skip).
+
+Phase 4 likewise: `cargo test` (85 tests; the flip-graph test takes about 6 s in a debug
+build), the `#[ignore]`d full TOPCOM comparison in release, clippy and `cargo doc` with
+`-D warnings` on both feature sets, `cargo fmt --check`, `prek -a`, and pytest (28 pass,
+7 skip). The two 0.3 tests asserting 387/64 still report as skipped because they go on to
+call `all_triangulations`; their flip-graph assertions run and pass first.
 
 **Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
@@ -1183,18 +1251,20 @@ regenerating to do any of phases 1–7.
 
 Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
 
-### Starting Phase 4
+### Starting Phase 5
 
-Phases 1–3 are done (recorded in §7, decisions in §13). For Phase 4:
+Phases 1–4 are done (recorded in §7, decisions in §13). Notes for Phase 5 from Phase 4:
 
-1. `src/triang/flipgraph.rs` — BFS over `flip_reps`/`expand`/`apply` with one visited
-   `HashSet<Triangulation>`, as an iterator (§5.4), generic over `Symmetry`.
-2. Seed with `fine` when `only_fine`, pass `forbid_vertex_removal = only_fine`, and yield
-   nothing when the fine seed is not fine (B1; §13, Phase 2 decisions).
-3. Python `all_connected_triangulations` and a streaming `iter_all_connected_triangulations`.
-4. Tests: the corpus as sets (respecting `untrusted`), the B1 values in
-   `KNOWN_DIVERGENT.md`, and `n_connected`/`n_connected_fine`/`connected` in
-   `topcom.json.gz` (the fine count is not comparable where `fine_seed_not_fine`).
+* The cross-check of §7 is ready: for every corpus configuration whose flip graph is
+  connected, `triang::all_connected(om, only_fine)` must equal the extension-graph result
+  as a set. On the TOPCOM corpus, `topcom.json.gz` already records `connected` (whole
+  components, up to 40 triangulations) and `n_connected`; adding `points2nalltriangs` /
+  `points2nallfinetriangs` counts to the generator is one line each (the binaries build
+  with the same recipe).
+* Build `chiro2circuits`-style references for `Admissibles`, not `points2circuits` (§13,
+  Phase 3 decisions).
+* `vc_degenerate_flip` has never been enumerated by any test; keep it behind `#[ignore]`
+  and a memory cap until Phase 5's streaming DFS is what is being measured.
 
 ### A warning about the `__repr__` strings
 

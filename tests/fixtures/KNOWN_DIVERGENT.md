@@ -53,7 +53,10 @@ is order-sensitive, which is exactly what a placing-order-dependent seed
 predicts, and a released version hanging on a nine-point two-dimensional input
 is the sharpest single argument in the corpus for the rewrite.
 
-**Phase 4** fixes this by seeding with the fine triangulation.
+**Phase 4** fixes this by seeding with the fine triangulation, and yielding
+nothing when that is not fine (no fine triangulation exists then). All six values
+above are asserted in `tests/flipgraph.rs`, each also as a set equal to the
+oracle's `all_triangulations(only_fine=True)`.
 
 ## B3 — integer overflow in the height→weight conversion
 
