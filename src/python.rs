@@ -27,10 +27,12 @@ use pyo3::exceptions::{
     PyIndexError, PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError,
 };
 use pyo3::prelude::*;
+use pyo3::types::PyFloat;
 
-use crate::config::{Config, Kind, Lockable, Points, Vectors};
+use crate::config::{Config, Kind, Lockable, PointConfig, Points, Vectors};
 use crate::error::{Error, Result};
 use crate::om::Chirotope;
+use crate::regular::{self, Scalar};
 use crate::symmetry::TrivialGroup;
 use crate::triang;
 
@@ -45,6 +47,7 @@ impl From<Error> for PyErr {
             | Error::EmptyConfiguration
             | Error::RankExceedsCount { .. }
             | Error::ParameterCountMismatch { .. }
+            | Error::InvalidParameter { .. }
             | Error::InvalidTriangulation(_) => PyValueError::new_err(msg),
             Error::IndexOutOfRange { .. } => PyIndexError::new_err(msg),
             // Invalid use, or our own bug.
@@ -171,6 +174,62 @@ where
     })
 }
 
+/// Run a regular-triangulation algorithm on a point configuration, then lock
+/// it, as [`triangulate`] does for the chirotope-based ones.
+fn triangulate_regular<F>(
+    py: Python<'_>,
+    config: &mut Lockable<Points>,
+    algorithm: F,
+) -> PyResult<Triangulation>
+where
+    F: FnOnce(&PointConfig) -> Result<triang::Triangulation> + Send,
+{
+    let frozen = config.get();
+    let inner = py.detach(|| algorithm(frozen))?;
+    Ok(Triangulation {
+        config: config.lock().into(),
+        inner,
+    })
+}
+
+/// A Python integer of any size.
+fn to_ibig(x: &Bound<'_, PyAny>) -> PyResult<dashu_int::IBig> {
+    if let Ok(v) = x.extract::<i64>() {
+        return Ok(v.into());
+    }
+    let text = x.str()?;
+    text.to_str()?
+        .parse()
+        .map_err(|_| PyTypeError::new_err("expected an integer"))
+}
+
+/// A weight or height: a `float` (or numpy float) exactly as the double it is,
+/// an `int` or `numbers.Rational` such as `Fraction` exactly, and anything
+/// else through `float()`, as 0.3 did.
+fn to_scalar(x: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    if x.is_instance_of::<PyFloat>() {
+        return Ok(Scalar::Float(x.extract()?));
+    }
+    if let Ok(v) = x.extract::<i64>() {
+        return Ok(Scalar::from(v));
+    }
+    if let (Ok(num), Ok(den)) = (x.getattr("numerator"), x.getattr("denominator")) {
+        return Ok(Scalar::Rational {
+            numerator: to_ibig(&num)?,
+            denominator: to_ibig(&den)?,
+        });
+    }
+    let f = x
+        .call_method0("__float__")
+        .map_err(|_| PyTypeError::new_err("weights and heights must be real numbers"))?;
+    Ok(Scalar::Float(f.extract()?))
+}
+
+/// A sequence of weights or heights.
+fn to_scalars(values: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
+    values.try_iter()?.map(|x| to_scalar(&x?)).collect()
+}
+
 /// A configuration of points in affine space.
 #[pyclass(module = "triangulumancer")]
 pub struct PointConfiguration {
@@ -264,18 +323,36 @@ impl PointConfiguration {
         todo("PointConfiguration.all_triangulations", 5)
     }
 
-    fn delaunay_triangulation(&self) -> PyResult<Triangulation> {
-        todo("PointConfiguration.delaunay_triangulation", 6)
+    fn delaunay_triangulation(&mut self, py: Python<'_>) -> PyResult<Triangulation> {
+        triangulate_regular(py, &mut self.inner, regular::delaunay)
     }
 
-    fn triangulate_with_weights(&self, weights: Vec<f64>) -> PyResult<Triangulation> {
-        let _ = weights;
-        todo("PointConfiguration.triangulate_with_weights", 6)
+    /// The regular triangulation for weights `w`, i.e. heights `|p|^2 - w`.
+    /// Floats are taken exactly as the doubles they are; ints and
+    /// `fractions.Fraction` are exact.
+    fn triangulate_with_weights(
+        &mut self,
+        py: Python<'_>,
+        weights: &Bound<'_, PyAny>,
+    ) -> PyResult<Triangulation> {
+        let weights = to_scalars(weights)?;
+        triangulate_regular(py, &mut self.inner, move |c| {
+            regular::with_weights(c, &weights)
+        })
     }
 
-    fn triangulate_with_heights(&self, heights: Vec<f64>) -> PyResult<Triangulation> {
-        let _ = heights;
-        todo("PointConfiguration.triangulate_with_heights", 6)
+    /// The regular triangulation for the given heights. Floats are taken
+    /// exactly as the doubles they are; ints and `fractions.Fraction` are
+    /// exact.
+    fn triangulate_with_heights(
+        &mut self,
+        py: Python<'_>,
+        heights: &Bound<'_, PyAny>,
+    ) -> PyResult<Triangulation> {
+        let heights = to_scalars(heights)?;
+        triangulate_regular(py, &mut self.inner, move |c| {
+            regular::with_heights(c, &heights)
+        })
     }
 }
 
@@ -553,6 +630,14 @@ impl Triangulation {
     #[getter]
     fn is_fine(&self) -> bool {
         self.inner.is_fine()
+    }
+
+    /// The labels no simplex uses, in increasing order. For a regular
+    /// triangulation these are the hidden points: those lifted above the
+    /// lower hull, and duplicates that lost the tie.
+    #[getter]
+    fn hidden_points(&self) -> Vec<usize> {
+        self.inner.unused().to_vec()
     }
 
     /// Triangulations are equal when they have the same simplices and belong

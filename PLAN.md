@@ -10,7 +10,7 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phases 0–4 complete. **Phase 5 is next** (Phase 6 is independent of it).
+> ## ▶ Status: Phases 0–4 and 6 complete. **Phase 5 is next**, then Phase 7.
 >
 > Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
 > integer configurations with exact rank and affine-hull reduction (`config`), bitset
@@ -19,16 +19,18 @@ result looks like*, and *how we know it is correct*.
 > `triang` (the `Triangulation` type with a full validity check, placing and fine), and,
 > from Phase 3, circuits with TOPCOM's flip predicates and `triang::flip` (flip sets,
 > expansion, application), and from Phase 4 `triang::flipgraph` (a streaming BFS, B1
-> fixed). Python ships `placing_triangulation`, `fine_triangulation`, a real
+> fixed), and from Phase 6 `regular/` (Delaunay and regular triangulations replacing CGAL,
+> B3–B5 fixed). Python ships `placing_triangulation`, `fine_triangulation`, a real
 > `Triangulation` class with `__eq__`/`__hash__`, `flips`/`bistellar_flips`/`neighbors`,
 > `Flip`, and `all_connected_triangulations` plus a streaming
-> `iter_all_connected_triangulations`; `all_triangulations` and the CGAL methods are still
-> `NotImplementedError` stubs. `regular/`, `om/cocircuit.rs` and `triang/extension/` in §4
-> do not exist yet.
+> `iter_all_connected_triangulations`, `delaunay_triangulation`, `triangulate_with_weights`/
+> `_heights` (exact int/`Fraction` inputs accepted) and `Triangulation.hidden_points`;
+> only `all_triangulations` is still a `NotImplementedError` stub. `om/cocircuit.rs` and
+> `triang/extension/` in §4 do not exist yet.
 >
 > * **§7** — the phase table and what each phase ships.
-> * **§13** — what exists, what CI has verified, and **the Phase 1 and Phase 2 decisions
->   later phases build on**.
+> * **§13** — what exists, what CI has verified, and **the per-phase decisions later
+>   phases build on**.
 > * **§14** — setup on a fresh machine, and notes for Phase 5.
 >
 > *Finishing a phase means updating this banner and the table in §7, alongside §13.*
@@ -464,7 +466,7 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ✅ **done** |
 | 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ✅ **done** |
 | 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ▶ **next** |
-| 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ⬜ |
+| 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ✅ **done** |
 | 7 | Parity, performance, release | the 0.4.0 release | low | ⬜ |
 
 Phases 5 and 6 are independent of each other and share only the Phase 1 foundation, so they
@@ -635,7 +637,7 @@ graph is connected, the two enumerations must produce identical sets).
 completes. That configuration is the phase's headline target, not a stretch goal: it is the
 one input in the corpus the C++ cannot handle at all.
 
-### ⬜ Phase 6 — Regular and Delaunay triangulations  *(~3 000 LOC, high risk)*
+### ✅ Phase 6 — Regular and Delaunay triangulations — **DONE** *(~1 350 lines of `src/regular/` including docs and unit tests, plus ~150 in `arith`; high risk)*
 
 The CGAL replacement, per [`CGAL.md` §6.6](CGAL.md): CGAL's data structure, the single
 lifted predicate, preceded by the affine-hull reduction already built in Phase 1.
@@ -662,6 +664,22 @@ invariants after *every* insertion in debug builds; fuzz with random point sets;
 capped-iteration walk that returns a hard error rather than hanging. Use a flip-based
 construction (start from the placing triangulation of Phase 2, flip down to regular) as an
 independent oracle on small inputs.
+
+**Met.** `tests/regular.rs` matches all 155 trusted `delaunay_triangulation` and
+`triangulate_with_*` results in the corpus exactly, in canonical order — the cospherical and
+lattice cases included (unit square, 3×3 grid, cubes, cross-polytopes, products of
+simplices) — and asserts the B3, B4 and B5 values now written in `KNOWN_DIVERGENT.md` for
+the 34 untrusted ones. Every result, corpus and random, passes an independent regularity
+certificate (`tests/common/regular.rs`: `Triangulation::check` on the hull-reduced
+chirotope, and every lifted point weakly above every lifted simplex), and the TDS
+invariants after every insertion in debug builds. The tie-breaking is pinned by a
+brute-force oracle — every simplex whose lifted hyperplane has all other points strictly
+above it, for lifts perturbed *numerically* by the rule the implementation applies
+symbolically — on 215 small random configurations by default and 5 043 of 20 000 in the
+`#[ignore]`d release run (`cargo test --release --test regular -- --ignored`, ~45 s),
+all identical. The flip-based oracle was not used: flips are Phase 3, being built in
+parallel; the brute-force oracle is the stronger check on small inputs anyway, since it
+also fixes the tie-breaking. Decisions are in §13.
 
 ### ⬜ Phase 7 — Parity, performance, release
 
@@ -787,8 +805,8 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0–4 are complete; Phase 5 is next.** Nothing in phases 5 and 7 has been started
-here; Phase 6 is in progress separately.
+**Phases 0–4 and 6 are complete; Phase 5 is next.** Nothing in phases 5 and 7 has been
+started. Phase 6 was developed in parallel on a separate branch and merged.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
@@ -796,8 +814,8 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 85 tests, plus the `#[ignore]`d 10⁶-matrix and full flip-graph runs |
-| Python | `pytest`: 28 pass, 7 skip, each skip naming its phase |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 101 tests, plus the `#[ignore]`d 10⁶-matrix, full flip-graph and 20 000-configuration regular-fuzz runs |
+| Python | `pytest`: 40 pass, 4 skip, all four awaiting Phase 5 |
 | Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, 180 KiB, TOPCOM's own CLI tools |
 
 ### What exists in `src/`
@@ -805,7 +823,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Module | Contents |
 |---|---|
 | `lib.rs` | `ConfigKind`, the layering doc comment |
-| `error.rs` | the `#[non_exhaustive] Error` enum; Phase 1 added `InvalidShape` and `IndexOutOfRange` |
+| `error.rs` | the `#[non_exhaustive] Error` enum; Phase 1 added `InvalidShape` and `IndexOutOfRange`, Phase 6 `InvalidParameter` |
 | `arith.rs`, `arith/{filter,bareiss}.rs` | `Sign`, `SquareMatrix`, `sign_of_det`, `rank`; the three tiers, each public on its own |
 | `config.rs`, `config/hull.rs` | `Config<K: Kind>` with markers `Points`/`Vectors`, `Lockable<K>`, `reduce_to_hull` |
 | `simplex.rs` | `Simplex` (bitset), `SimplexSet` (canonically ordered set of simplices), `combinations` (lex-order `k`-subsets) |
@@ -817,9 +835,10 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `triang/placing.rs`, `triang/fine.rs` | `triang::placing`, `triang::fine` |
 | `triang/flip.rs` | `FlipRep`, `Flip`, `flip_reps` (naive), `flips`, `neighbors` |
 | `triang/flipgraph.rs` | `FlipGraph` (streaming BFS iterator, generic over `Symmetry`), `all_connected` |
-| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations` and `TriangulationIterator`; `all_triangulations` and CGAL methods still `todo()` stubs |
+| `regular/{mod,lift,predicates,tds,insert}.rs` | `delaunay`, `with_weights`, `with_heights`, `from_lifts`; `Scalar` exact lifts; CGAL-compatible symbolic perturbation; cell arena; walk + conflict-zone insertion |
+| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations` and `TriangulationIterator`; CGAL-replacement methods and `hidden_points`; only `all_triangulations` is still a `todo()` stub |
 
-`regular/`, `om/cocircuit.rs` and `triang/extension` from §4 do not exist yet.
+`om/cocircuit.rs` and `triang/extension` from §4 do not exist yet.
 
 Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s),
@@ -827,7 +846,7 @@ Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `tests/fixture_triang.rs` (placing and fine against the corpus; `check` over every corpus
 triangulation and its corruptions), `tests/fixture_flips.rs` (flips and neighbours of
 placing against the corpus), `tests/flipgraph.rs` (the flip graph against the corpus, the
-B1 values and TOPCOM's enumerators) and `tests/topcom.rs` (chirotope, placing, fine,
+B1 values and TOPCOM's enumerators) and `tests/regular.rs` (regular/Delaunay against the corpus, B3–B5 values, brute-force oracle fuzz) and `tests/topcom.rs` (chirotope, placing, fine,
 circuits and flip sets against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
 it with `mod common;`.
 
@@ -1115,6 +1134,59 @@ takes about 5 minutes on 4 cores.
   and `__hash__` hashes the simplices only. Comparison with a non-`Triangulation` is
   `False`.
 
+### Phase 6 decisions later phases depend on
+
+**Arithmetic.** `arith::sign_of_det_of<T: Entry>` runs the three tiers over `i64`, `i128`
+or `IBig` entries (sealed `Entry` trait; the `i64` API is unchanged).
+`filter::sign_of_det_of`, `bareiss::sign_of_det_i128_of` and `bareiss::sign_of_det_bigint_of`
+are the tiers; `tests/sign_of_det.rs` checks all of them on the existing families and on a
+new family of genuinely wide entries. `robust` is still not used: every predicate here is a
+general determinant on integers, and the filter decides the generic cases.
+
+**Lifts (`regular::lift`).** The core takes integer lifts (`regular::from_lifts`); heights,
+weights and Delaunay are thin wrappers. A `Scalar` is `Float(f64)` (its exact dyadic
+value), `Integer(IBig)` or `Rational`; all are brought to a common denominator (lcm) and
+carried as `IBig`, kept as `i64` inside the predicates when they fit. `|p|²` comes from the
+*original* coordinates. Rejected with `Error::InvalidParameter` (new; `ValueError`):
+non-finite and subnormal floats, zero denominators, and scaled lifts wider than
+`lift::MAX_LIFT_BITS = 1280` bits — about a thousand binary orders of magnitude of
+spread, e.g. `1e-200` next to `1e200`. That cap is a judgement call; revisit it if a real
+input hits it.
+
+**Ties: CGAL's rule, not input index.** `CGAL.md` §4.4 recommended perturbing by input
+index; that would have produced valid triangulations differing from 0.3 on every
+cospherical fixture. CGAL's `perturbed_power_side_of_power_sphere` is itself a consistent
+symbolic perturbation of the lifts (`ℓᵢ + ε^π(i)`, the lexicographically largest point by
+coordinates raised most), so its output is the *unique* regular triangulation of the
+perturbed lifts, independent of CGAL's randomised insertion order. Implementing the same
+rule reproduces the oracle on every trusted fixture. The order compares the original
+coordinates and breaks ties between duplicates by label (higher label raised more), so
+among duplicates with equal lifts the lowest label survives — the deterministic B5 choice.
+The infinite-cell tie (query on a hull facet's hyperplane) defers to the finite cell
+across the facet, as CGAL does. The cospherical fixtures are therefore *not* ambiguous for
+this port: the rule is part of the output contract, and changing it changes results.
+
+**Algorithm.** Affine-hull reduction first (`Config::reduce_to_hull`), then: dimension 0
+is the lowest lift; otherwise an initial simplex (first affinely independent points in
+label order) with its `d + 1` infinite cells, and every other point inserted in label
+order. No spatial sort: 20 000 random points in the plane take about a second through
+Python, 1 000 in dimension 4 under half a second; add BRIO/Hilbert ordering only if
+profiling asks. The walk is CGAL's remembering visibility walk with a seeded xorshift
+start index, capped at one step per live cell (regular triangulations are acyclic for the
+in-front relation, so exact predicates never need more); exceeding it is `Error::Internal`.
+Hole retriangulation links new cells by hashing their facets
+(`Tds::link_unlinked`); an unmatched facet is `Error::Internal`, never a corrupt mesh. The
+TDS stores mirror indices as `u8`, hence a dimension cap of 254 (`Error::Overflow`).
+
+**Results.** A plain `triang::Triangulation` with `rank = dim(aff P) + 1`; hidden points
+are `unused()`. An empty configuration is `Error::EmptyConfiguration` (0.3 returned an
+empty array). Python: `PointConfiguration.delaunay_triangulation()`,
+`triangulate_with_weights(seq)`, `triangulate_with_heights(seq)` — a `float` (or numpy
+float) is taken as its exact double, an `int` (any size) or `numbers.Rational` such as
+`Fraction` exactly, anything else through `__float__` — and `Triangulation.hidden_points`,
+a sorted `list[int]` (`unused()`, so for placing triangulations it lists the unused
+points). Locking happens only on success, as for the other methods.
+
 ### Verified vs not
 
 Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
@@ -1126,6 +1198,12 @@ Phase 1 was verified locally on Linux x86_64, Python 3.13: `cargo test`, clippy 
 skip), the 10⁶-matrix harness in release, and `gen_fixtures.py --only single_point`. Phase 1
 has **not** yet been through CI; nothing in it is platform-specific, but the `f64` filter's
 soundness argument assumes IEEE round-to-nearest, which holds on all four CI targets.
+
+Phase 6 was verified locally on Linux x86_64: `cargo test` (85 tests, 2 ignored),
+the ignored 20 000-configuration release fuzz, clippy with `-D warnings` and `cargo doc`
+on both feature sets, `cargo fmt --check`, and pytest (28 pass, 5 skip, all skips
+Phase 3–5). `prek -a` reports ruff findings only in files this phase did not touch
+(`test_triangulation_api.py`, `gen_topcom_fixtures.py`), which are unchanged from Phase 2.
 
 Phase 2 was verified locally on Linux x86_64, Python 3.13: `cargo test` (69 tests),
 clippy with `-D warnings` and `cargo doc` with `-D warnings` on both feature sets,
@@ -1198,13 +1276,13 @@ git clone git@github.com:ariostas/triangulumancer.git
 cd triangulumancer
 git checkout rust-migration
 
-cargo test                                      # should pass, 69 tests (1 ignored)
+cargo test                                      # should pass, 101 tests (4 ignored)
 cargo clippy --all-targets -- -D warnings
 cargo clippy --features python --all-targets -- -D warnings
 
 uv venv .venv-dev
 VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
-.venv-dev/bin/python -m pytest                  # should give 16 passes, 8 skips
+.venv-dev/bin/python -m pytest                  # should give 40 passes, 4 skips
 
 prek -a --quiet                                 # all hooks should pass
 ```
@@ -1253,7 +1331,7 @@ Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §
 
 ### Starting Phase 5
 
-Phases 1–4 are done (recorded in §7, decisions in §13). Notes for Phase 5 from Phase 4:
+Phases 1–4 and 6 are done (recorded in §7, decisions in §13). Notes for Phase 5 from Phase 4:
 
 * The cross-check of §7 is ready: for every corpus configuration whose flip graph is
   connected, `triang::all_connected(om, only_fine)` must equal the extension-graph result

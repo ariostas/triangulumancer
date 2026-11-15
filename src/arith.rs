@@ -22,11 +22,19 @@
 //!
 //! Orientation does not matter: a matrix and its transpose have the same
 //! determinant, so callers may pass rows or columns, whichever they have.
+//!
+//! Entries are `i64` for the chirotope. The regular-triangulation predicates
+//! need wider ones — coordinate differences take 65 bits, and lifted heights
+//! `|p|^2 - w` with exactly scaled `f64` weights need arbitrary precision — so
+//! [`sign_of_det_of`] runs the same three tiers over any [`Entry`] type:
+//! `i64`, `i128` or [`IBig`].
 
 pub mod bareiss;
 pub mod filter;
 
 use std::ops::{Mul, Neg};
+
+use dashu_int::IBig;
 
 use crate::error::{Error, Result};
 
@@ -158,6 +166,111 @@ pub fn sign_of_det_square(m: SquareMatrix<'_>) -> Sign {
             .or_else(|| bareiss::sign_of_det_i128(m))
             .unwrap_or_else(|| bareiss::sign_of_det_bigint(m)),
     }
+}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for i64 {}
+    impl Sealed for i128 {}
+    impl Sealed for dashu_int::IBig {}
+}
+
+/// An exact integer matrix entry: `i64`, `i128` or [`IBig`].
+///
+/// Sealed; the three implementers are the only ones. The methods are what the
+/// tiers need from an entry.
+pub trait Entry: sealed::Sealed + Clone {
+    /// An interval `(lo, hi)` of finite `f64`s containing the value, or `None`
+    /// if the value is beyond the `f64` range.
+    fn bracket(&self) -> Option<(f64, f64)>;
+    /// The value as an `i128`, if it fits.
+    fn to_i128(&self) -> Option<i128>;
+    /// The value as an arbitrary-precision integer.
+    fn to_ibig(&self) -> IBig;
+    /// The sign of the value.
+    fn sign(&self) -> Sign;
+}
+
+impl Entry for i64 {
+    fn bracket(&self) -> Option<(f64, f64)> {
+        Some(filter::bracket_i128(i128::from(*self)))
+    }
+    fn to_i128(&self) -> Option<i128> {
+        Some(i128::from(*self))
+    }
+    fn to_ibig(&self) -> IBig {
+        IBig::from(*self)
+    }
+    fn sign(&self) -> Sign {
+        Sign::of(*self)
+    }
+}
+
+impl Entry for i128 {
+    fn bracket(&self) -> Option<(f64, f64)> {
+        Some(filter::bracket_i128(*self))
+    }
+    fn to_i128(&self) -> Option<i128> {
+        Some(*self)
+    }
+    fn to_ibig(&self) -> IBig {
+        IBig::from(*self)
+    }
+    fn sign(&self) -> Sign {
+        Sign::of(*self)
+    }
+}
+
+impl Entry for IBig {
+    fn bracket(&self) -> Option<(f64, f64)> {
+        match i128::try_from(self) {
+            Ok(v) => Some(filter::bracket_i128(v)),
+            Err(_) => filter::bracket_rounded(self.to_f64().value()),
+        }
+    }
+    fn to_i128(&self) -> Option<i128> {
+        i128::try_from(self).ok()
+    }
+    fn to_ibig(&self) -> IBig {
+        self.clone()
+    }
+    fn sign(&self) -> Sign {
+        if self.is_zero() {
+            Sign::Zero
+        } else if *self > IBig::ZERO {
+            Sign::Positive
+        } else {
+            Sign::Negative
+        }
+    }
+}
+
+/// The exact sign of the determinant of the `n x n` matrix `m`, for any
+/// [`Entry`] type.
+///
+/// The same three tiers as [`sign_of_det`]: the `f64` interval filter, then
+/// Bareiss in checked `i128` (skipped when an entry does not fit), then Bareiss
+/// over [`IBig`]. For `i64` entries the answer is the same as
+/// [`sign_of_det`]'s.
+///
+/// # Errors
+///
+/// [`Error::DimensionMismatch`] if `m.len() != n * n`.
+pub fn sign_of_det_of<T: Entry>(m: &[T], n: usize) -> Result<Sign> {
+    let expected = n.checked_mul(n).ok_or(Error::Overflow("matrix size"))?;
+    if m.len() != expected {
+        return Err(Error::DimensionMismatch {
+            expected,
+            found: m.len(),
+        });
+    }
+    Ok(match n {
+        0 => Sign::Positive,
+        1 => m[0].sign(),
+        _ => filter::sign_of_det_of(m, n)
+            .or_else(|| bareiss::sign_of_det_i128_of(m, n))
+            .unwrap_or_else(|| bareiss::sign_of_det_bigint_of(m, n)),
+    })
 }
 
 /// The exact rank of the `rows x cols` matrix `m`, read row-major.

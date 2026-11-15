@@ -21,7 +21,7 @@
 //!   reduces to, and exact rank.
 //! * [`config`] — integer point/vector configurations and exact linear algebra
 //!   over them, including the reduction to the affine hull. Coordinates live
-//!   here and nowhere else, apart from `regular`.
+//!   here and nowhere else, apart from [`regular`].
 //! * [`simplex`] — simplices as bitsets of labels, and sets of simplices.
 //! * [`om`] — the oriented-matroid layer: chirotope and circuits (cocircuits
 //!   later). Built *from* a configuration, and the only thing the
@@ -34,7 +34,7 @@
 //! [`symmetry`] is the seam for enumerating up to symmetry; only the trivial
 //! group exists.
 //!
-//! `regular` sits beside them: a regular triangulation is *not* determined by
+//! [`regular`] (Delaunay and regular triangulations) sits beside them: a regular triangulation is *not* determined by
 //! the oriented matroid, so it is the one algorithm that genuinely needs
 //! coordinates.
 //!
@@ -47,6 +47,7 @@ pub mod arith;
 pub mod config;
 pub mod error;
 pub mod om;
+pub mod regular;
 pub mod simplex;
 pub mod symmetry;
 pub mod triang;

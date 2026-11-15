@@ -74,6 +74,12 @@ impl Rng {
 ///
 /// `minor[S] = sum_{j in S} (-1)^(k - 1 + pos_S(j)) * m[k-1][j] * minor[S \ {j}]`
 fn oracle_det(m: &[i64], n: usize) -> IBig {
+    let big: Vec<IBig> = m.iter().map(|&x| IBig::from(x)).collect();
+    oracle_det_big(&big, n)
+}
+
+/// [`oracle_det`] over arbitrary-precision entries.
+fn oracle_det_big(m: &[IBig], n: usize) -> IBig {
     let mut minor = vec![IBig::ZERO; 1 << n];
     minor[0] = IBig::ONE;
     for mask in 1usize..(1 << n) {
@@ -81,12 +87,12 @@ fn oracle_det(m: &[i64], n: usize) -> IBig {
         let row = &m[(k - 1) * n..k * n];
         let mut acc = IBig::ZERO;
         let mut pos = 0;
-        for (j, &entry) in row.iter().enumerate() {
+        for (j, entry) in row.iter().enumerate() {
             if mask & (1 << j) == 0 {
                 continue;
             }
-            if entry != 0 {
-                let term = IBig::from(entry) * &minor[mask & !(1 << j)];
+            if !entry.is_zero() {
+                let term = entry * &minor[mask & !(1 << j)];
                 if (k - 1 + pos) % 2 == 0 {
                     acc += term;
                 } else {
@@ -462,6 +468,38 @@ fn check(case: &Case, label: &str, stats: &mut Stats) {
         stats.filter_hits += 1;
     }
 
+    // The entry-generic stack (phase 6) over the same values, as i64, i128
+    // and IBig, must agree too — tier by tier.
+    let wide: Vec<i128> = m.iter().map(|&x| x as i128).collect();
+    let big: Vec<IBig> = m.iter().map(|&x| IBig::from(x)).collect();
+    assert_eq!(arith::sign_of_det_of(m, n).unwrap(), expected, "{}", ctx());
+    assert_eq!(
+        arith::sign_of_det_of(&wide, n).unwrap(),
+        expected,
+        "{}",
+        ctx()
+    );
+    assert_eq!(
+        arith::sign_of_det_of(&big, n).unwrap(),
+        expected,
+        "{}",
+        ctx()
+    );
+    if n >= 2 {
+        assert_eq!(
+            bareiss::sign_of_det_bigint_of(&big, n),
+            expected,
+            "{}",
+            ctx()
+        );
+        if let Some(s) = bareiss::sign_of_det_i128_of(&wide, n) {
+            assert_eq!(s, expected, "generic i128 tier: {}", ctx());
+        }
+        if let Some(s) = filter::sign_of_det_of(&big, n) {
+            assert_eq!(s, expected, "generic f64 filter: {}", ctx());
+        }
+    }
+
     // Invariances: transposition preserves the sign, a row swap negates it.
     let t = transpose(m, n);
     assert_eq!(
@@ -556,6 +594,65 @@ fn malformed_input_is_an_error_not_a_panic() {
     assert!(arith::sign_of_det(&[1, 2, 3], 2).is_err());
     assert!(SquareMatrix::new(&[1, 2, 3], 2).is_err());
     assert!(arith::sign_of_det(&[], 0).is_ok());
+}
+
+/// Entries wider than `i64`, as the regular-triangulation predicates produce
+/// them: coordinate differences of up to 65 bits, and a last column of lifts
+/// scaled by a power of two of up to a thousand bits. A third of the cases
+/// are made singular by repeating a combination of rows, so the exact tiers
+/// are exercised as well as the filter.
+#[test]
+fn wide_entries() {
+    let mut rng = Rng(0x5eed_0006);
+    let mut decided = [0usize; 3];
+    for round in 0..3000 {
+        let n = 2 + rng.below(6) as usize;
+        let shift = rng.pick(&[0usize, 10, 60, 64, 120, 200, 1000]);
+        let bound = rng.pick(&[3, 1000, 1 << 40, i64::MAX]);
+        let mut m: Vec<IBig> = Vec::with_capacity(n * n);
+        for _ in 0..n {
+            for j in 0..n {
+                let a = IBig::from(rng.signed(bound));
+                if j + 1 == n {
+                    let b = IBig::from(rng.signed(bound));
+                    m.push((a * b) << shift);
+                } else {
+                    m.push(a - IBig::from(rng.signed(bound)));
+                }
+            }
+        }
+        if round % 3 == 0 {
+            // Row n-1 := row 0 - row 1: exactly singular.
+            for j in 0..n {
+                m[(n - 1) * n + j] = &m[j] - &m[n + j];
+            }
+        }
+        let expected = sign_of(&oracle_det_big(&m, n));
+        let got = arith::sign_of_det_of(&m, n).unwrap();
+        assert_eq!(got, expected, "n = {n}, shift = {shift}, {m:?}");
+        assert_eq!(bareiss::sign_of_det_bigint_of(&m, n), expected);
+        if let Some(s) = filter::sign_of_det_of(&m, n) {
+            assert_eq!(s, expected);
+            decided[0] += 1;
+        }
+        if let Some(wide) = m
+            .iter()
+            .map(|x| i128::try_from(x).ok())
+            .collect::<Option<Vec<i128>>>()
+        {
+            assert_eq!(arith::sign_of_det_of(&wide, n).unwrap(), expected);
+            if let Some(s) = bareiss::sign_of_det_i128_of(&wide, n) {
+                assert_eq!(s, expected);
+                decided[1] += 1;
+            }
+        }
+        if expected == Sign::Zero {
+            decided[2] += 1;
+        }
+    }
+    // Every tier and the zero case were reached.
+    assert!(decided.iter().all(|&k| k > 0), "{decided:?}");
+    assert!(arith::sign_of_det_of(&[IBig::ONE; 3], 2).is_err());
 }
 
 /// The default run: a few hundred matrices per family and size.

@@ -16,7 +16,7 @@
 //! some pivot interval contains zero — always the case for a singular matrix —
 //! the filter gives up and the exact tiers decide.
 
-use super::{Sign, SquareMatrix};
+use super::{Entry, Sign, SquareMatrix};
 
 /// The next representable `f64` above `x`, for finite `x`.
 ///
@@ -46,6 +46,47 @@ struct Interval {
 
 /// Integers up to this magnitude convert to `f64` exactly.
 const EXACT_LIMIT: u64 = 1 << 53;
+
+/// An interval of `f64`s containing `x`: the point itself up to `2^53`, and
+/// one ulp either side of the rounded value beyond.
+pub(crate) fn bracket_i128(x: i128) -> (f64, f64) {
+    let f = x as f64;
+    if x.unsigned_abs() <= u128::from(EXACT_LIMIT) {
+        (f, f)
+    } else {
+        (next_down(f), next_up(f))
+    }
+}
+
+/// An interval of `f64`s containing an integer whose value, rounded to an
+/// `f64` with an error below one ulp, is `f`; `None` if that is not finite.
+pub(crate) fn bracket_rounded(f: f64) -> Option<(f64, f64)> {
+    if !f.is_finite() {
+        return None;
+    }
+    let (lo, hi) = (next_down(f), next_up(f));
+    (lo.is_finite() && hi.is_finite()).then_some((lo, hi))
+}
+
+/// Tier 1 for any [`Entry`] type: the determinant sign of the row-major
+/// `n x n` matrix `m` by interval Gaussian elimination, or `None` if the
+/// filter cannot decide (or an entry is beyond the `f64` range).
+///
+/// The caller guarantees `m.len() == n * n`.
+pub fn sign_of_det_of<T: Entry>(m: &[T], n: usize) -> Option<Sign> {
+    let zero = Interval { lo: 0.0, hi: 0.0 };
+    let convert = |x: &T| x.bracket().map(|(lo, hi)| Interval { lo, hi });
+    if m.len() <= INLINE {
+        let mut buf = [zero; INLINE];
+        for (dst, x) in buf.iter_mut().zip(m) {
+            *dst = convert(x)?;
+        }
+        eliminate(&mut buf[..m.len()], n)
+    } else {
+        let mut buf = m.iter().map(convert).collect::<Option<Vec<_>>>()?;
+        eliminate(&mut buf, n)
+    }
+}
 
 impl Interval {
     #[inline]
