@@ -164,7 +164,8 @@ pts = np.random.default_rng(7).integers(-10**6, 10**6, size=(20000, 3))
 t = PointConfiguration(pts).delaunay_triangulation()
 assert t.n_simplices > 100000, t.n_simplices
 peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-print(peak // (1 if sys.platform == "darwin" else 1024) // 1024)
+# ru_maxrss is in bytes on macOS and in KiB on Linux.
+print(peak // (1024 if sys.platform == "darwin" else 1) // 1024)
 """
     out = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
