@@ -8,6 +8,8 @@ errors instead of garbage.
 from __future__ import annotations
 
 import math
+import subprocess
+import sys
 from fractions import Fraction
 
 import numpy as np
@@ -129,3 +131,27 @@ def test_many_points() -> None:
     pts = rng.integers(-5, 6, size=(300, 3))
     t = PointConfiguration(pts).triangulate_with_heights(rng.integers(0, 50, size=300))
     assert t.n_simplices > 0
+
+
+def test_large_delaunay_memory_is_linear() -> None:
+    if sys.platform == "win32":
+        pytest.skip("needs the resource module")
+    # Simplices with labels of 128 or more must cost O(rank) each, not O(n):
+    # with an n-bit bitset per simplex this run peaked at ~300 MiB, and the cost
+    # grew quadratically (40 000 points took over 1 GiB). Run in a subprocess so
+    # that the peak is this computation's alone.
+    code = """
+import resource, sys
+import numpy as np
+from triangulumancer import PointConfiguration
+pts = np.random.default_rng(7).integers(-10**6, 10**6, size=(20000, 3))
+t = PointConfiguration(pts).delaunay_triangulation()
+assert t.n_simplices > 100000, t.n_simplices
+peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+print(peak // (1 if sys.platform == "darwin" else 1024) // 1024)
+"""
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    peak_mib = int(out.stdout.strip())
+    assert peak_mib < 200, f"peak RSS {peak_mib} MiB"

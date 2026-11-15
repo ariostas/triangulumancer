@@ -13,7 +13,7 @@ result looks like*, and *how we know it is correct*.
 > ## ▶ Status: Phases 0–6 complete. **Phase 7 is next.**
 >
 > Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
-> integer configurations with exact rank and affine-hull reduction (`config`), bitset
+> integer configurations with exact rank and affine-hull reduction (`config`),
 > simplices (`simplex`) — and, from Phase 2, the oriented-matroid layer (`om`: the
 > `OrientedMatroid` trait, a lazy `Chirotope`, `Circuit`), the `Symmetry` seam, and
 > `triang` (the `Triangulation` type with a full validity check, placing and fine), and,
@@ -177,7 +177,7 @@ triangulumancer/
 │   │   └── filter.rs           #   f64 error-bounded filter tier
 │   ├── config.rs               # Config: column-major integer matrix, rank, point vs vector
 │   │   └── hull.rs             #   exact HNF affine-hull reduction
-│   ├── simplex.rs              # Simplex bitset, SimplexSet, link/join/support/boundary
+│   ├── simplex.rs              # Simplex, SimplexSet, link/join/support/boundary
 │   ├── om/                     # ORIENTED MATROID LAYER — the reusable middle (§6)
 │   │   ├── mod.rs              #   pub trait OrientedMatroid { fn sign(&self, basis) -> Sign }
 │   │   ├── chirotope.rs        #   Chirotope: lazy, memoised, built from a Config
@@ -856,7 +856,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `error.rs` | the `#[non_exhaustive] Error` enum; Phase 1 added `InvalidShape` and `IndexOutOfRange`, Phase 6 `InvalidParameter` |
 | `arith.rs`, `arith/{filter,bareiss}.rs` | `Sign`, `SquareMatrix`, `sign_of_det`, `rank`; the three tiers, each public on its own |
 | `config.rs`, `config/hull.rs` | `Config<K: Kind>` with markers `Points`/`Vectors`, `Lockable<K>`, `reduce_to_hull` |
-| `simplex.rs` | `Simplex` (bitset), `SimplexSet` (canonically ordered set of simplices), `combinations` (lex-order `k`-subsets) |
+| `simplex.rs` | `Simplex` (inline `u128` bitmask, sorted label list above 128), `SimplexSet` (canonically ordered set of simplices), `combinations` (lex-order `k`-subsets) |
 | `om/mod.rs` | the `OrientedMatroid` trait; `check_basis`; `to_topcom_string` (`points2chiro` format) |
 | `om/chirotope.rs` | `Chirotope`, lazy and memoised; `Config::chirotope()` |
 | `om/circuit.rs` | `Circuit` with TOPCOM's orientation, `upper_facets`/`lower_facets`, `containment_ok`, `link_ok`, `common_link`; `circuits(om)` |
@@ -948,16 +948,27 @@ it with `mod common;`.
 
 **Simplices (`simplex`).**
 
-* `Simplex` is a bitset stored **inline as a `u128` for labels below 128, spilling to a boxed
-  word slice above**; the representation is canonical, so derived `Eq`/`Hash` are correct. It
-  is `Clone`, not `Copy` (because of the spill), and cheap to clone inline. There is **no cap
-  on the number of points**: the corpus needs at most 16, the exhaustive tier 8, but placing
-  and fine triangulations of configurations with hundreds of points are realistic.
-  `as_bits()` exposes the `u128` for hand-written fast paths. Phase 7 can measure whether a
-  const-generic fixed width beats this.
+* `Simplex` is stored **inline as a `u128` bitmask for labels below 128, spilling to a boxed
+  sorted label list (`Box<[usize]>`) above**; the representation is canonical, so derived
+  `Eq`/`Hash` are correct. It is `Clone`, not `Copy` (because of the spill), and cheap to
+  clone inline. There is **no cap on the number of points**: the corpus needs at most 16, the
+  exhaustive tier 8, but placing and fine triangulations of configurations with hundreds of
+  points, and Delaunay triangulations of hundreds of thousands, are realistic.
+  `as_bits()` exposes the `u128` for hand-written fast paths.
+* **A spilled simplex costs O(cardinality), not O(n).** The spill used to be an `n`-bit
+  bitset, so every simplex of a large triangulation was as wide as the configuration and a
+  Delaunay triangulation cost O(n²): 40 000 random 3-D points peaked at 1.1 GB through
+  Python. With label lists the same run peaks at 78 MB, and 100 000 points at 150 MB. Set
+  operations on spilled simplices are sorted merges (inline/spilled mixes take a bitmask
+  shortcut where possible), `contains` is a binary search, `Extend`/`FromIterator` sort
+  once, and `SimplexSet::support` marks labels in a flat table rather than taking repeated
+  unions. Guarded by `simplex::tests::spilled_simplices_cost_their_cardinality`, the
+  `#[ignore]`d `large_delaunay_memory_is_linear` in `tests/regular.rs` (50 000 points, peak
+  64 MiB in release) and `test_large_delaunay_memory_is_linear` in pytest (20 000 points,
+  peak under 200 MiB, in a subprocess).
 * `Ord` is **lexicographic on sorted label lists** — the canonical order of §5.6, the same
-  order Python gives `sorted(simplex)` lists — computed with bit operations, not by
-  materialising lists.
+  order Python gives `sorted(simplex)` lists — computed with bit operations for two inline
+  simplices, and by comparing the label lists otherwise.
 * `SimplexSet` is a `BTreeSet<Simplex>` newtype, so iteration is canonical and two
   triangulations with the same simplices are equal and hash equally. `support`, `star`,
   `link`, `join`, `join_simplex`, `insert_boundary` follow TOPCOM's `SimplicialComplex`

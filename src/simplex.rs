@@ -1,14 +1,18 @@
-//! Simplices as bitsets of point labels, and sets of simplices.
+//! Simplices as sets of point labels, and sets of simplices.
 //!
 //! A [`Simplex`] is a set of indices into a configuration; for a triangulation
 //! of a rank-`r` configuration, every maximal simplex has `r` of them. TOPCOM
 //! represents these as heap-allocated `IntegerSet`s; here the common case is a
-//! single inline `u128`, so configurations of up to 128 points never allocate
-//! for a simplex, and every set operation is a handful of word instructions.
-//! Larger configurations still work: a simplex with a label of 128 or more
-//! spills to a boxed word slice. The representation is canonical (a simplex is
-//! inline exactly when all its labels are below 128), so equality and hashing
-//! never have to compare across representations.
+//! single inline `u128` bitmask, so configurations of up to 128 points never
+//! allocate for a simplex, and every set operation is a handful of word
+//! instructions. Larger configurations still work: a simplex with a label of
+//! 128 or more spills to a boxed, sorted list of its labels, so it costs
+//! O(cardinality) — O(rank) for a maximal simplex — however large the
+//! configuration is. (A bitset would cost O(n) per simplex, and a Delaunay
+//! triangulation with O(n) simplices would then cost O(n²).) The
+//! representation is canonical (a simplex is inline exactly when all its labels
+//! are below 128), so equality and hashing never have to compare across
+//! representations.
 //!
 //! **Ordering is canonical** (`PLAN.md` section 5.6): simplices compare
 //! lexicographically on their sorted label lists, exactly as Python compares
@@ -38,14 +42,15 @@ const INLINE_BITS: usize = 128;
 enum Repr {
     /// Every label is below 128.
     Inline(u128),
-    /// Some label is at least 128. At least three words, and the last word is
-    /// non-zero, so the representation of a set is unique.
-    Spilled(Box<[u64]>),
+    /// Some label is at least 128: the labels, strictly increasing, so the
+    /// representation of a set is unique.
+    Spilled(Box<[usize]>),
 }
 
-/// A finite set of point labels, stored as a bitset.
+/// A finite set of point labels.
 ///
-/// Cheap to clone for configurations of up to 128 points (a `u128` copy).
+/// Cheap to clone for configurations of up to 128 points (a `u128` copy), and
+/// O(cardinality) in memory beyond that.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Simplex {
     repr: Repr,
@@ -55,6 +60,14 @@ impl Default for Simplex {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Which elements of a sorted merge to keep.
+#[derive(Clone, Copy)]
+struct Keep {
+    only_a: bool,
+    only_b: bool,
+    both: bool,
 }
 
 impl Simplex {
@@ -91,65 +104,76 @@ impl Simplex {
                 (1u128 << n) - 1
             })
         } else {
-            let mut words = vec![u64::MAX; n / 64];
-            if n % 64 != 0 {
-                words.push((1u64 << (n % 64)) - 1);
-            }
-            Self::from_words(words)
-        }
-    }
-
-    /// Canonicalise a little-endian word vector.
-    fn from_words(mut words: Vec<u64>) -> Self {
-        while words.last() == Some(&0) {
-            words.pop();
-        }
-        match words.len() {
-            0 => Self::new(),
-            1 => Self::from_bits(words[0] as u128),
-            2 => Self::from_bits(words[0] as u128 | (words[1] as u128) << 64),
-            _ => Self {
-                repr: Repr::Spilled(words.into_boxed_slice()),
-            },
-        }
-    }
-
-    /// The number of 64-bit words in use.
-    fn n_words(&self) -> usize {
-        match &self.repr {
-            Repr::Inline(_) => 2,
-            Repr::Spilled(w) => w.len(),
-        }
-    }
-
-    /// Word `i`, zero past the end.
-    #[inline]
-    fn word(&self, i: usize) -> u64 {
-        match &self.repr {
-            Repr::Inline(b) => match i {
-                0 => *b as u64,
-                1 => (*b >> 64) as u64,
-                _ => 0,
-            },
-            Repr::Spilled(w) => w.get(i).copied().unwrap_or(0),
-        }
-    }
-
-    /// Combine two simplices word by word.
-    #[inline]
-    fn zip_with(
-        &self,
-        other: &Self,
-        f: impl Fn(u64, u64) -> u64,
-        g: impl Fn(u128, u128) -> u128,
-    ) -> Self {
-        match (&self.repr, &other.repr) {
-            (Repr::Inline(a), Repr::Inline(b)) => Self::from_bits(g(*a, *b)),
-            _ => {
-                let n = self.n_words().max(other.n_words());
-                Self::from_words((0..n).map(|i| f(self.word(i), other.word(i))).collect())
+            Self {
+                repr: Repr::Spilled((0..n).collect()),
             }
         }
+    }
+
+    /// Canonicalise a strictly increasing label list.
+    fn from_sorted(labels: Vec<usize>) -> Self {
+        debug_assert!(labels.windows(2).all(|w| w[0] < w[1]));
+        match labels.last() {
+            Some(&last) if last >= INLINE_BITS => Self {
+                repr: Repr::Spilled(labels.into_boxed_slice()),
+            },
+            _ => Self::from_bits(labels.iter().fold(0, |b, &v| b | 1 << v)),
+        }
+    }
+
+    /// The labels of a spilled simplex, or `None` for an inline one.
+    fn spilled(&self) -> Option<&[usize]> {
+        match &self.repr {
+            Repr::Inline(_) => None,
+            Repr::Spilled(v) => Some(v),
+        }
+    }
+
+    /// Merge two simplices' sorted label lists, keeping what `keep` says.
+    fn merge(&self, other: &Self, keep: Keep) -> Self {
+        let (mut a, mut b) = (self.iter().peekable(), other.iter().peekable());
+        let mut out = Vec::with_capacity(self.len() + other.len());
+        loop {
+            match (a.peek(), b.peek()) {
+                (None, None) => break,
+                (Some(&x), None) => {
+                    if !keep.only_a {
+                        break;
+                    }
+                    out.push(x);
+                    a.next();
+                }
+                (None, Some(&y)) => {
+                    if !keep.only_b {
+                        break;
+                    }
+                    out.push(y);
+                    b.next();
+                }
+                (Some(&x), Some(&y)) => match x.cmp(&y) {
+                    Ordering::Less => {
+                        if keep.only_a {
+                            out.push(x);
+                        }
+                        a.next();
+                    }
+                    Ordering::Greater => {
+                        if keep.only_b {
+                            out.push(y);
+                        }
+                        b.next();
+                    }
+                    Ordering::Equal => {
+                        if keep.both {
+                            out.push(x);
+                        }
+                        a.next();
+                        b.next();
+                    }
+                },
+            }
+        }
+        Self::from_sorted(out)
     }
 
     /// Whether `label` is in the simplex.
@@ -157,48 +181,65 @@ impl Simplex {
     pub fn contains(&self, label: usize) -> bool {
         match &self.repr {
             Repr::Inline(b) => label < INLINE_BITS && b & (1 << label) != 0,
-            Repr::Spilled(_) => self.word(label / 64) & (1 << (label % 64)) != 0,
+            Repr::Spilled(v) => v.binary_search(&label).is_ok(),
         }
     }
 
     /// Add `label`. Returns whether it was newly added.
     pub fn insert(&mut self, label: usize) -> bool {
-        if self.contains(label) {
-            return false;
-        }
         match &mut self.repr {
-            Repr::Inline(b) if label < INLINE_BITS => *b |= 1 << label,
-            _ => {
-                let n = self.n_words().max(label / 64 + 1);
-                let mut words: Vec<u64> = (0..n).map(|i| self.word(i)).collect();
-                words[label / 64] |= 1 << (label % 64);
-                *self = Self::from_words(words);
+            Repr::Inline(b) if label < INLINE_BITS => {
+                let fresh = *b & (1 << label) == 0;
+                *b |= 1 << label;
+                fresh
             }
+            Repr::Inline(_) => {
+                let mut v = self.to_vec();
+                v.push(label);
+                *self = Self::from_sorted(v);
+                true
+            }
+            Repr::Spilled(v) => match v.binary_search(&label) {
+                Ok(_) => false,
+                Err(i) => {
+                    let mut w = Vec::with_capacity(v.len() + 1);
+                    w.extend_from_slice(&v[..i]);
+                    w.push(label);
+                    w.extend_from_slice(&v[i..]);
+                    *v = w.into_boxed_slice();
+                    true
+                }
+            },
         }
-        true
     }
 
     /// Remove `label`. Returns whether it was present.
     pub fn remove(&mut self, label: usize) -> bool {
-        if !self.contains(label) {
-            return false;
-        }
         match &mut self.repr {
-            Repr::Inline(b) => *b &= !(1 << label),
-            Repr::Spilled(w) => {
-                let mut words = w.to_vec();
-                words[label / 64] &= !(1 << (label % 64));
-                *self = Self::from_words(words);
+            Repr::Inline(b) => {
+                let present = label < INLINE_BITS && *b & (1 << label) != 0;
+                if present {
+                    *b &= !(1 << label);
+                }
+                present
             }
+            Repr::Spilled(v) => match v.binary_search(&label) {
+                Err(_) => false,
+                Ok(i) => {
+                    let mut w = v.to_vec();
+                    w.remove(i);
+                    *self = Self::from_sorted(w);
+                    true
+                }
+            },
         }
-        true
     }
 
     /// The number of labels; the cardinality, not the dimension.
     pub fn len(&self) -> usize {
         match &self.repr {
             Repr::Inline(b) => b.count_ones() as usize,
-            Repr::Spilled(w) => w.iter().map(|x| x.count_ones() as usize).sum(),
+            Repr::Spilled(v) => v.len(),
         }
     }
 
@@ -214,32 +255,36 @@ impl Simplex {
 
     /// The largest label.
     pub fn last(&self) -> Option<usize> {
-        let n = self.n_words();
-        (0..n)
-            .rev()
-            .find(|&i| self.word(i) != 0)
-            .map(|i| i * 64 + 63 - self.word(i).leading_zeros() as usize)
+        match &self.repr {
+            Repr::Inline(0) => None,
+            Repr::Inline(b) => Some(127 - b.leading_zeros() as usize),
+            Repr::Spilled(v) => v.last().copied(),
+        }
     }
 
     /// The labels in increasing order.
     pub fn iter(&self) -> Iter<'_> {
-        Iter {
-            simplex: self,
-            index: 0,
-            current: self.word(0),
+        match &self.repr {
+            Repr::Inline(b) => Iter(IterRepr::Inline(*b)),
+            Repr::Spilled(v) => Iter(IterRepr::Spilled(v.iter())),
         }
     }
 
     /// The labels in increasing order, collected.
     pub fn to_vec(&self) -> Vec<usize> {
-        self.iter().collect()
+        match &self.repr {
+            Repr::Inline(_) => self.iter().collect(),
+            Repr::Spilled(v) => v.to_vec(),
+        }
     }
 
     /// Whether every label of `self` is in `other`.
     pub fn is_subset(&self, other: &Self) -> bool {
         match (&self.repr, &other.repr) {
             (Repr::Inline(a), Repr::Inline(b)) => a & !b == 0,
-            _ => (0..self.n_words()).all(|i| self.word(i) & !other.word(i) == 0),
+            // A spilled set has a label of 128 or more, which no inline set has.
+            (Repr::Spilled(_), Repr::Inline(_)) => false,
+            _ => self.len() <= other.len() && self.iter().all(|v| other.contains(v)),
         }
     }
 
@@ -253,29 +298,84 @@ impl Simplex {
         match (&self.repr, &other.repr) {
             (Repr::Inline(a), Repr::Inline(b)) => a & b == 0,
             _ => {
-                (0..self.n_words().min(other.n_words())).all(|i| self.word(i) & other.word(i) == 0)
+                let (small, large) = if self.len() <= other.len() {
+                    (self, other)
+                } else {
+                    (other, self)
+                };
+                !small.iter().any(|v| large.contains(v))
             }
         }
     }
 
     /// The labels in either simplex.
     pub fn union(&self, other: &Self) -> Self {
-        self.zip_with(other, |a, b| a | b, |a, b| a | b)
+        match (&self.repr, &other.repr) {
+            (Repr::Inline(a), Repr::Inline(b)) => Self::from_bits(a | b),
+            _ => self.merge(
+                other,
+                Keep {
+                    only_a: true,
+                    only_b: true,
+                    both: true,
+                },
+            ),
+        }
     }
 
     /// The labels in both simplices.
     pub fn intersection(&self, other: &Self) -> Self {
-        self.zip_with(other, |a, b| a & b, |a, b| a & b)
+        match (&self.repr, &other.repr) {
+            (Repr::Inline(a), Repr::Inline(b)) => Self::from_bits(a & b),
+            // Only labels below 128 can be common.
+            (Repr::Inline(a), Repr::Spilled(_)) | (Repr::Spilled(_), Repr::Inline(a)) => {
+                let s = if self.spilled().is_some() {
+                    self
+                } else {
+                    other
+                };
+                Self::from_bits(a & low_bits(s))
+            }
+            _ => self.merge(
+                other,
+                Keep {
+                    only_a: false,
+                    only_b: false,
+                    both: true,
+                },
+            ),
+        }
     }
 
     /// The labels of `self` not in `other`.
     pub fn difference(&self, other: &Self) -> Self {
-        self.zip_with(other, |a, b| a & !b, |a, b| a & !b)
+        match (&self.repr, &other.repr) {
+            (Repr::Inline(a), Repr::Inline(b)) => Self::from_bits(a & !b),
+            (Repr::Inline(a), Repr::Spilled(_)) => Self::from_bits(a & !low_bits(other)),
+            _ => self.merge(
+                other,
+                Keep {
+                    only_a: true,
+                    only_b: false,
+                    both: false,
+                },
+            ),
+        }
     }
 
     /// The labels in exactly one of the two simplices.
     pub fn symmetric_difference(&self, other: &Self) -> Self {
-        self.zip_with(other, |a, b| a ^ b, |a, b| a ^ b)
+        match (&self.repr, &other.repr) {
+            (Repr::Inline(a), Repr::Inline(b)) => Self::from_bits(a ^ b),
+            _ => self.merge(
+                other,
+                Keep {
+                    only_a: true,
+                    only_b: true,
+                    both: false,
+                },
+            ),
+        }
     }
 
     /// The facets: `self` minus one label, in increasing order of the label
@@ -289,12 +389,26 @@ impl Simplex {
     }
 }
 
+/// The labels below 128 of a simplex, as a bitmask.
+fn low_bits(s: &Simplex) -> u128 {
+    match &s.repr {
+        Repr::Inline(b) => *b,
+        Repr::Spilled(v) => v
+            .iter()
+            .take_while(|&&x| x < INLINE_BITS)
+            .fold(0, |b, &x| b | 1 << x),
+    }
+}
+
 /// Iterator over the labels of a [`Simplex`], in increasing order.
 #[derive(Debug, Clone)]
-pub struct Iter<'a> {
-    simplex: &'a Simplex,
-    index: usize,
-    current: u64,
+pub struct Iter<'a>(IterRepr<'a>);
+
+#[derive(Debug, Clone)]
+enum IterRepr<'a> {
+    /// The labels not yet yielded.
+    Inline(u128),
+    Spilled(std::slice::Iter<'a, usize>),
 }
 
 impl Iterator for Iter<'_> {
@@ -302,18 +416,29 @@ impl Iterator for Iter<'_> {
 
     #[inline]
     fn next(&mut self) -> Option<usize> {
-        while self.current == 0 {
-            self.index += 1;
-            if self.index >= self.simplex.n_words() {
-                return None;
+        match &mut self.0 {
+            IterRepr::Inline(b) => {
+                if *b == 0 {
+                    return None;
+                }
+                let bit = b.trailing_zeros() as usize;
+                *b &= *b - 1;
+                Some(bit)
             }
-            self.current = self.simplex.word(self.index);
+            IterRepr::Spilled(it) => it.next().copied(),
         }
-        let bit = self.current.trailing_zeros() as usize;
-        self.current &= self.current - 1;
-        Some(self.index * 64 + bit)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = match &self.0 {
+            IterRepr::Inline(b) => b.count_ones() as usize,
+            IterRepr::Spilled(it) => it.len(),
+        };
+        (n, Some(n))
     }
 }
+
+impl ExactSizeIterator for Iter<'_> {}
 
 impl<'a> IntoIterator for &'a Simplex {
     type Item = usize;
@@ -334,9 +459,30 @@ impl FromIterator<usize> for Simplex {
 
 impl Extend<usize> for Simplex {
     fn extend<I: IntoIterator<Item = usize>>(&mut self, iter: I) {
+        // Labels below 128 go straight into a bitmask; any others are
+        // collected and merged once, so building a large set is O(k log k)
+        // rather than quadratic.
+        let mut low = low_bits(self);
+        let mut high: Vec<usize> = Vec::new();
         for v in iter {
-            self.insert(v);
+            if v < INLINE_BITS {
+                low |= 1 << v;
+            } else {
+                high.push(v);
+            }
         }
+        if high.is_empty() && self.spilled().is_none() {
+            *self = Self::from_bits(low);
+            return;
+        }
+        if let Some(v) = self.spilled() {
+            high.extend(v.iter().copied().filter(|&x| x >= INLINE_BITS));
+        }
+        high.sort_unstable();
+        high.dedup();
+        let mut labels: Vec<usize> = Self::from_bits(low).iter().collect();
+        labels.extend(high);
+        *self = Self::from_sorted(labels);
     }
 }
 
@@ -355,11 +501,12 @@ impl<const N: usize> From<[usize; N]> for Simplex {
 impl Ord for Simplex {
     /// Lexicographic order on the sorted label lists, a proper prefix first.
     ///
-    /// Let `x` be the smallest label in exactly one of the two sets; below `x`
-    /// the sorted lists agree. If `x` is in `a`, the next entry of `a` is `x`
-    /// while the next entry of `b` is its first label above `x`, if any: so
-    /// `a < b` exactly when `b` has a label above `x`, and otherwise `b` is a
-    /// prefix of `a`. Symmetrically if `x` is in `b`.
+    /// For two inline simplices: let `x` be the smallest label in exactly one
+    /// of the two sets; below `x` the sorted lists agree. If `x` is in `a`, the
+    /// next entry of `a` is `x` while the next entry of `b` is its first label
+    /// above `x`, if any: so `a < b` exactly when `b` has a label above `x`,
+    /// and otherwise `b` is a prefix of `a`. Symmetrically if `x` is in `b`.
+    /// Otherwise the label lists are compared directly.
     fn cmp(&self, other: &Self) -> Ordering {
         if let (Repr::Inline(a), Repr::Inline(b)) = (&self.repr, &other.repr) {
             let diff = a ^ b;
@@ -382,25 +529,10 @@ impl Ord for Simplex {
                 Ordering::Less
             };
         }
-        let n = self.n_words().max(other.n_words());
-        let Some(i) = (0..n).find(|&i| self.word(i) != other.word(i)) else {
-            return Ordering::Equal;
-        };
-        let (wa, wb) = (self.word(i), other.word(i));
-        let bit = (wa ^ wb).trailing_zeros();
-        let above =
-            |s: &Simplex, w: u64| (w >> bit) >> 1 != 0 || (i + 1..n).any(|j| s.word(j) != 0);
-        if wa & (1 << bit) != 0 {
-            if above(other, wb) {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        } else if above(self, wa) {
-            Ordering::Greater
-        } else {
-            Ordering::Less
+        if let (Repr::Spilled(a), Repr::Spilled(b)) = (&self.repr, &other.repr) {
+            return a.cmp(b);
         }
+        self.iter().cmp(other.iter())
     }
 }
 
@@ -514,11 +646,31 @@ impl SimplexSet {
     /// The union of all simplices: the labels used. A triangulation is *fine*
     /// exactly when its support is every label of the configuration.
     pub fn support(&self) -> Simplex {
-        let mut s = Simplex::new();
+        let mut low = 0u128;
+        let mut max = 0;
         for t in &self.simplices {
-            s |= t;
+            match t.as_bits() {
+                Some(b) => low |= b,
+                None => max = max.max(t.last().unwrap_or(0)),
+            }
         }
-        s
+        if max == 0 {
+            return Simplex::from_bits(low);
+        }
+        // Mark labels in a flat table rather than taking repeated unions, which
+        // would cost O(n) per simplex once the support spills.
+        let mut seen = vec![false; max + 1];
+        for t in &self.simplices {
+            if t.as_bits().is_none() {
+                for v in t {
+                    seen[v] = true;
+                }
+            }
+        }
+        for v in Simplex::from_bits(low).iter() {
+            seen[v] = true;
+        }
+        Simplex::from_sorted((0..=max).filter(|&v| seen[v]).collect())
     }
 
     /// The simplices containing `simplex` (itself included, if present).
@@ -807,6 +959,36 @@ mod tests {
         assert_eq!(Simplex::full(128).len(), 128);
         assert_eq!(Simplex::full(130).to_vec(), (0..130).collect::<Vec<_>>());
         assert_eq!(Simplex::full(0), Simplex::new());
+    }
+
+    #[test]
+    fn spilled_simplices_cost_their_cardinality() {
+        // An inline simplex is a `u128`; the enum adds only a tag.
+        assert!(std::mem::size_of::<Simplex>() <= 32);
+        // A simplex with a huge label stores its labels, not a bitset as wide
+        // as the configuration: O(rank) words, whatever the labels are.
+        for top in [129, 1_000, 1_000_000, usize::MAX / 2] {
+            let a = s(&[0, 7, 127, top]);
+            match &a.repr {
+                Repr::Spilled(v) => assert_eq!(v.len(), 4),
+                Repr::Inline(_) => panic!("{top} should spill"),
+            }
+            let b = s(&[1, 7, top - 1, top]);
+            for t in [&a | &b, &a & &b, &a - &b, &a ^ &b] {
+                assert!(t.spilled().is_none_or(|v| v.len() <= 8));
+            }
+            assert_eq!((&a & &b).to_vec(), vec![7, top]);
+            assert_eq!((&a - &b).to_vec(), vec![0, 127]);
+            assert!((&a - &b).as_bits().is_some());
+            assert_eq!(a.facets().count(), 4);
+            assert!(a.contains(top) && !a.contains(top - 1));
+        }
+        // The support of many spilled simplices is built in one pass.
+        let k: SimplexSet = (0..1000).map(|i| s(&[i, i + 1, 100_000 + i])).collect();
+        let sup = k.support();
+        assert_eq!(sup.len(), 2001);
+        assert_eq!(sup.first(), Some(0));
+        assert_eq!(sup.last(), Some(100_999));
     }
 
     #[test]

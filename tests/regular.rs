@@ -359,3 +359,33 @@ fn larger_random_sets() {
         }
     }
 }
+
+/// Peak resident set size of this process in MiB, from `/proc/self/status`;
+/// `None` where that is unavailable.
+fn peak_rss_mib() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM:"))?;
+    let kib: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kib / 1024)
+}
+
+/// A large Delaunay triangulation stays linear in memory: simplices with
+/// labels of 128 or more must cost O(rank), not O(n), each. With an O(n)
+/// bitset per simplex this run peaked at well over a gigabyte.
+///
+/// `cargo test --release --test regular -- --ignored large_delaunay`, alone,
+/// since the peak is process-wide.
+#[test]
+#[ignore = "50 000 points; run in release, on its own"]
+fn large_delaunay_memory_is_linear() {
+    let mut rng = Rng(0x5eed_0604);
+    let n = 50_000;
+    let rows: Vec<i64> = (0..3 * n).map(|_| rng.signed(1_000_000)).collect();
+    let config = PointConfig::from_row_major(&rows, n, 3).unwrap();
+    let t = regular::delaunay(&config).unwrap();
+    assert!(t.len() > 5 * n, "{} simplices", t.len());
+    if let Some(peak) = peak_rss_mib() {
+        println!("{} simplices, peak RSS {peak} MiB", t.len());
+        assert!(peak < 400, "peak RSS {peak} MiB");
+    }
+}
