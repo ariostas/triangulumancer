@@ -1263,7 +1263,16 @@ carried as `IBig`, kept as `i64` inside the predicates when they fit. `|p|²` co
 non-finite and subnormal floats, zero denominators, and scaled lifts wider than
 `lift::MAX_LIFT_BITS = 1280` bits — about a thousand binary orders of magnitude of
 spread, e.g. `1e-200` next to `1e200`. That cap is a judgement call; revisit it if a real
-input hits it.
+input hits it. The cap is **invariant under a common shift and a common positive scale**:
+`scale` subtracts the smallest lift and divides out the numerators' common factor before
+taking the common denominator (neither changes any predicate sign nor the symbolic
+perturbation), so heights all equal to `2**1300` are accepted as all-zero heights, and
+`[2**1300, 2**1300 + 5, …]` as `[0, 5, …]`. (It was first checked on the raw lifts, which
+rejected those.) The common denominator is checked as it grows — past
+`MAX_LIFT_BITS + max denominator bits` every non-zero lift is already too wide — so many
+large coprime denominators fail fast instead of building a huge lcm. `from_heights` and
+`from_weights` therefore return normalised lifts (minimum zero); `from_lifts` itself takes
+any integers, uncapped.
 
 **Ties: CGAL's rule, not input index.** `CGAL.md` §4.4 recommended perturbing by input
 index; that would have produced valid triangulations differing from 0.3 on every

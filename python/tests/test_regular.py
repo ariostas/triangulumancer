@@ -98,6 +98,22 @@ def test_duplicates() -> None:
     assert t.hidden_points == [1]
 
 
+def test_lift_cap_is_shift_and_scale_invariant() -> None:
+    # Equal huge heights are the same as zero heights; only the spread counts.
+    p = square()
+    flat = p.triangulate_with_heights([0, 0, 0, 0]).simplices.tolist()
+    assert square().triangulate_with_heights([2**1300] * 4).simplices.tolist() == flat
+    big = 2**1300
+    t = square().triangulate_with_heights([big, big, big + 5, big])
+    assert t.simplices.tolist() == [[0, 1, 3], [1, 2, 3]]
+    t = square().triangulate_with_heights([0, 0, 5 * big, 0])
+    assert t.simplices.tolist() == [[0, 1, 3], [1, 2, 3]]
+    t = square().triangulate_with_weights([Fraction(1, big)] * 4)
+    assert t.simplices.tolist() == flat
+    with pytest.raises(ValueError, match="orders of magnitude"):
+        square().triangulate_with_heights([big, 0, 1, 0])
+
+
 def test_errors() -> None:
     p = square()
     with pytest.raises(ValueError, match="number of parameters"):

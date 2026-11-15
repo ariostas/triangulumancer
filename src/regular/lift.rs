@@ -173,24 +173,97 @@ fn norm_squared(config: &PointConfig, i: usize) -> IBig {
         .sum()
 }
 
-/// Bring exact lifts to a common denominator, as integers.
+fn too_wide(index: usize) -> Error {
+    invalid(
+        index,
+        "the lifts span too many binary orders of magnitude to be compared exactly \
+         (see triangulumancer::regular::lift::MAX_LIFT_BITS)",
+    )
+}
+
+/// `a - b`, in lowest terms.
+fn difference(a: &Ratio, b: &Ratio) -> Ratio {
+    let num = &a.num * IBig::from(b.den.clone()) - &b.num * IBig::from(a.den.clone());
+    if num.is_zero() {
+        return Ratio {
+            num,
+            den: UBig::ONE,
+        };
+    }
+    let den = &a.den * &b.den;
+    let g = (&num).unsigned_abs().gcd(&den);
+    Ratio {
+        num: num / IBig::from(g.clone()),
+        den: den / g,
+    }
+}
+
+/// Bring exact lifts to integers, normalised so that the smallest is zero and
+/// they have no common factor.
+///
+/// Subtracting one constant from every lift, or dividing every lift by one
+/// positive constant, changes no predicate sign (the lifted points move by an
+/// affine map of the lifting direction), so neither changes the regular
+/// triangulation, and normalising makes the [`MAX_LIFT_BITS`] check
+/// invariant under both: heights that are all `2^1300` are the same as heights
+/// that are all zero. The symbolic perturbation that breaks ties depends only
+/// on the order of the points, not on the lifts, so it is unaffected too.
+///
+/// The common denominator is checked as it grows, so an input of many large,
+/// pairwise coprime denominators fails early instead of building a huge
+/// number first; the early failure is exactly the final check's verdict (see
+/// the comment in the loop).
 fn scale(ratios: Vec<Ratio>) -> Result<Vec<IBig>> {
+    let Some(min) = ratios
+        .iter()
+        .min_by(|a, b| {
+            (&a.num * IBig::from(b.den.clone())).cmp(&(&b.num * IBig::from(a.den.clone())))
+        })
+        .cloned()
+    else {
+        return Ok(Vec::new());
+    };
+    let mut diffs: Vec<Ratio> = ratios.iter().map(|r| difference(r, &min)).collect();
+    // Divide out the numerators' common factor. Every fraction is in lowest
+    // terms, so that factor is coprime to every denominator and they stay so.
+    let g = diffs
+        .iter()
+        .filter(|r| !r.num.is_zero())
+        .fold(UBig::ZERO, |g, r| {
+            // dashu's gcd panics on a zero argument.
+            if g.is_zero() {
+                (&r.num).unsigned_abs()
+            } else {
+                g.gcd((&r.num).unsigned_abs())
+            }
+        });
+    if g > UBig::ONE {
+        let g = IBig::from(g);
+        for r in &mut diffs {
+            r.num = &r.num / &g;
+        }
+    }
+    let max_den_bits = diffs.iter().map(|r| r.den.bit_len()).max().unwrap_or(0);
     let mut common = UBig::ONE;
-    for r in &ratios {
+    for (index, r) in diffs.iter().enumerate() {
         let g = (&common).gcd(&r.den);
         common = &common / &g * &r.den;
+        // Each non-zero lift `num * common / den` (zero lifts have `den = 1`)
+        // is at least `common / den >= common / 2^max_den_bits` in absolute
+        // value, and `common` only grows; so past this bound every non-zero
+        // lift is already too wide, and there is at least one, since the
+        // denominator would otherwise still be one.
+        if common.bit_len() > MAX_LIFT_BITS + max_den_bits {
+            return Err(too_wide(index));
+        }
     }
-    let lifts: Vec<IBig> = ratios
+    let lifts: Vec<IBig> = diffs
         .into_iter()
         .map(|r| r.num * IBig::from(&common / &r.den))
         .collect();
     for (index, l) in lifts.iter().enumerate() {
         if l.unsigned_abs().bit_len() > MAX_LIFT_BITS {
-            return Err(invalid(
-                index,
-                "the lifts span too many binary orders of magnitude to be compared exactly \
-                 (see triangulumancer::regular::lift::MAX_LIFT_BITS)",
-            ));
+            return Err(too_wide(index));
         }
     }
     Ok(lifts)
@@ -286,22 +359,22 @@ mod tests {
                 denominator: IBig::from(-3),
             },
         ];
-        // 1/2, 2, -1/3 over 6: 3, 12, -2.
+        // 1/2, 2, -1/3 shifted by 1/3 and over 6: 5, 14, 0.
         let l = from_heights(&c, &h).unwrap();
-        assert_eq!(l, [IBig::from(3), IBig::from(12), IBig::from(-2)]);
+        assert_eq!(l, [IBig::from(5), IBig::from(14), IBig::from(0)]);
     }
 
     #[test]
     fn weights_use_original_coordinates_without_overflow() {
         let c = line();
         let l = from_weights(&c, &[1.into(), 0.into(), 0.5.into()]).unwrap();
-        // |p|^2 - w over 2: -2, 18, 2 * 10^10 - 1.
+        // |p|^2 - w = -1, 9, 10^10 - 1/2; shifted by 1 and over 2.
         assert_eq!(
             l,
             [
-                IBig::from(-2),
-                IBig::from(18),
-                IBig::from(20_000_000_000i64 - 1)
+                IBig::from(0),
+                IBig::from(20),
+                IBig::from(20_000_000_000i64 + 1)
             ]
         );
         let big = PointConfig::from_row_major(&[i64::MIN, i64::MAX], 1, 2).unwrap();
@@ -332,5 +405,118 @@ mod tests {
         ));
         let fine = [Scalar::Float(1e-100), Scalar::Float(1e100), 0.into()];
         assert!(from_heights(&c, &fine).is_ok());
+    }
+
+    fn int(x: IBig) -> Scalar {
+        Scalar::Integer(x)
+    }
+
+    #[test]
+    fn the_cap_is_invariant_under_shift_and_scale() {
+        let c = line();
+        let huge = IBig::ONE << 1300;
+        // All equal: the same as all zero.
+        let same = vec![int(huge.clone()); 3];
+        assert_eq!(from_heights(&c, &same).unwrap(), [IBig::ZERO; 3]);
+        assert_eq!(
+            from_heights(&c, &vec![Scalar::Float(1e300); 3]).unwrap(),
+            [IBig::ZERO; 3]
+        );
+        // A huge common offset, or a huge common factor, is normalised away.
+        let shifted = [
+            int(&huge + IBig::from(2)),
+            int(huge.clone()),
+            int(&huge + IBig::from(7)),
+        ];
+        let expected = [IBig::from(2), IBig::from(0), IBig::from(7)];
+        assert_eq!(from_heights(&c, &shifted).unwrap(), expected);
+        let scaled = [
+            int(&huge * IBig::from(2)),
+            0.into(),
+            int(&huge * IBig::from(7)),
+        ];
+        assert_eq!(from_heights(&c, &scaled).unwrap(), expected);
+        let frac = |n: i64, d: IBig| Scalar::Rational {
+            numerator: IBig::from(n),
+            denominator: d,
+        };
+        let tiny = [frac(2, huge.clone()), 0.into(), frac(7, huge.clone())];
+        assert_eq!(from_heights(&c, &tiny).unwrap(), expected);
+        // Weights too: |p|^2 - w with w all equal to 2^1300.
+        let w = vec![int(huge.clone()); 3];
+        assert_eq!(
+            from_weights(&c, &w).unwrap(),
+            from_weights(&c, &[0.into(), 0.into(), 0.into()]).unwrap()
+        );
+        // A genuine spread is still too wide, shifted or not.
+        let spread = [int(huge.clone()), 0.into(), 1.into()];
+        assert!(matches!(
+            from_heights(&c, &spread),
+            Err(Error::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn many_coprime_denominators_fail_early() {
+        // 2000 distinct primes near 2^64 as denominators: their lcm would be
+        // ~128 000 bits, built by thousands of ever larger multiplications.
+        // The growing common denominator is checked as it goes.
+        let n = 2000;
+        let c = PointConfig::from_row_major(&vec![0; n], n, 1).unwrap();
+        let mut primes = Vec::new();
+        let mut p: u64 = u64::MAX;
+        while primes.len() < n {
+            p -= 2;
+            if is_prime(p) {
+                primes.push(p);
+            }
+        }
+        let h: Vec<Scalar> = primes
+            .iter()
+            .map(|&p| Scalar::Rational {
+                numerator: IBig::ONE,
+                denominator: IBig::from(p),
+            })
+            .collect();
+        match from_heights(&c, &h) {
+            Err(Error::InvalidParameter { index, .. }) => assert!(index < 40, "{index}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn is_prime(n: u64) -> bool {
+        // Deterministic Miller-Rabin for 64-bit integers.
+        let mul = |a: u64, b: u64| ((a as u128 * b as u128) % n as u128) as u64;
+        let pow = |mut b: u64, mut e: u64| {
+            let mut r = 1;
+            while e > 0 {
+                if e & 1 == 1 {
+                    r = mul(r, b);
+                }
+                b = mul(b, b);
+                e >>= 1;
+            }
+            r
+        };
+        let (mut d, mut s) = (n - 1, 0);
+        while d % 2 == 0 {
+            d /= 2;
+            s += 1;
+        }
+        [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]
+            .iter()
+            .all(|&a| {
+                let mut x = pow(a, d);
+                if x == 1 || x == n - 1 {
+                    return true;
+                }
+                for _ in 1..s {
+                    x = mul(x, x);
+                    if x == n - 1 {
+                        return true;
+                    }
+                }
+                false
+            })
     }
 }
