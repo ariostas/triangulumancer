@@ -45,8 +45,12 @@ jobs:
         run: cargo build --locked --verbose
       - name: Build with the Python bindings
         run: cargo build --locked --features python --verbose
+      # `self-check` is the internal feature for the expensive invariant checks
+      # (debug builds only). The crate's dev-dependency on itself enables it for
+      # any `cargo test` here already; naming it keeps that from depending on
+      # the manifest.
       - name: Run tests
-        run: cargo test --locked --verbose
+        run: cargo test --locked --features self-check --verbose
       - name: Check formatting
         run: cargo fmt --check
       - name: Clippy

@@ -36,6 +36,11 @@ cargo test
 prek -a --quiet                     # ruff, mypy, codespell, and more
 ```
 
+`cargo test` turns on the internal `self-check` feature (through the crate's
+dev-dependency on itself), which in debug builds re-checks the regular
+triangulation after every insertion and every incremental flip set against a
+naive recomputation. Both are quadratic, so they stay out of dependents' builds.
+
 [nox](https://nox.thea.codes/) has sessions for a few more:
 
 ```bash

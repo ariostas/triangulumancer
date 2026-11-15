@@ -293,7 +293,7 @@ pub fn flip_reps(
 ///
 /// `parent_flips` must be `flip_reps(om, parent, forbid_vertex_removal)`. The
 /// result is the same set as `flip_reps(om, child, forbid_vertex_removal)`,
-/// which debug builds assert.
+/// which this crate's own tests assert.
 ///
 /// # Errors
 ///
@@ -343,7 +343,11 @@ pub fn flip_reps_after(
             out.insert(rep);
         }
     }
-    debug_assert_eq!(
+    // The internal `self-check` feature: not for dependents, whose debug
+    // builds should neither pay for the naive recomputation nor panic when a
+    // documented-unchecked input (an invalid `FlipGraph::from_seed`) is wrong.
+    #[cfg(all(feature = "self-check", debug_assertions))]
+    assert_eq!(
         Ok(&out),
         flip_reps(om, child, forbid_vertex_removal).as_ref(),
         "incremental flips disagree with the naive ones"

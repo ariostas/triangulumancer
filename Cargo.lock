@@ -619,6 +619,7 @@ dependencies = [
  "numpy",
  "pyo3",
  "serde_json",
+ "triangulumancer",
 ]
 
 [[package]]

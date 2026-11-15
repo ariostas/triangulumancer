@@ -289,8 +289,10 @@ impl<'g> Builder<'g> {
         Ok(())
     }
 
+    /// [`check`](Self::check), with the internal `self-check` feature in a
+    /// debug build; otherwise nothing. It is quadratic overall.
     fn debug_check(&self) -> Result<()> {
-        if cfg!(debug_assertions) {
+        if cfg!(all(feature = "self-check", debug_assertions)) {
             self.check()
         } else {
             Ok(())
