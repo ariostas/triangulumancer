@@ -460,7 +460,7 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ▶ **next** |
 | 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ⬜ |
 | 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ⬜ |
-| 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ⬜ |
+| 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ✅ **done** |
 | 7 | Parity, performance, release | the 0.4.0 release | low | ⬜ |
 
 Phases 5 and 6 are independent of each other and share only the Phase 1 foundation, so they
@@ -607,7 +607,7 @@ graph is connected, the two enumerations must produce identical sets).
 completes. That configuration is the phase's headline target, not a stretch goal: it is the
 one input in the corpus the C++ cannot handle at all.
 
-### ⬜ Phase 6 — Regular and Delaunay triangulations  *(~3 000 LOC, high risk)*
+### ✅ Phase 6 — Regular and Delaunay triangulations — **DONE** *(~1 350 lines of `src/regular/` including docs and unit tests, plus ~150 in `arith`; high risk)*
 
 The CGAL replacement, per [`CGAL.md` §6.6](CGAL.md): CGAL's data structure, the single
 lifted predicate, preceded by the affine-hull reduction already built in Phase 1.
@@ -634,6 +634,22 @@ invariants after *every* insertion in debug builds; fuzz with random point sets;
 capped-iteration walk that returns a hard error rather than hanging. Use a flip-based
 construction (start from the placing triangulation of Phase 2, flip down to regular) as an
 independent oracle on small inputs.
+
+**Met.** `tests/regular.rs` matches all 155 trusted `delaunay_triangulation` and
+`triangulate_with_*` results in the corpus exactly, in canonical order — the cospherical and
+lattice cases included (unit square, 3×3 grid, cubes, cross-polytopes, products of
+simplices) — and asserts the B3, B4 and B5 values now written in `KNOWN_DIVERGENT.md` for
+the 34 untrusted ones. Every result, corpus and random, passes an independent regularity
+certificate (`tests/common/regular.rs`: `Triangulation::check` on the hull-reduced
+chirotope, and every lifted point weakly above every lifted simplex), and the TDS
+invariants after every insertion in debug builds. The tie-breaking is pinned by a
+brute-force oracle — every simplex whose lifted hyperplane has all other points strictly
+above it, for lifts perturbed *numerically* by the rule the implementation applies
+symbolically — on 215 small random configurations by default and 5 043 of 20 000 in the
+`#[ignore]`d release run (`cargo test --release --test regular -- --ignored`, ~45 s),
+all identical. The flip-based oracle was not used: flips are Phase 3, being built in
+parallel; the brute-force oracle is the stronger check on small inputs anyway, since it
+also fixes the tie-breaking. Decisions are in §13.
 
 ### ⬜ Phase 7 — Parity, performance, release
 
@@ -983,6 +999,59 @@ zero columns (zero vectors are covered by unit tests instead). Extending it with
 `points2circuits`, `points2flips` and `points2ntriangs` is the cheapest strong oracle for
 Phases 3–5.
 
+### Phase 6 decisions later phases depend on
+
+**Arithmetic.** `arith::sign_of_det_of<T: Entry>` runs the three tiers over `i64`, `i128`
+or `IBig` entries (sealed `Entry` trait; the `i64` API is unchanged).
+`filter::sign_of_det_of`, `bareiss::sign_of_det_i128_of` and `bareiss::sign_of_det_bigint_of`
+are the tiers; `tests/sign_of_det.rs` checks all of them on the existing families and on a
+new family of genuinely wide entries. `robust` is still not used: every predicate here is a
+general determinant on integers, and the filter decides the generic cases.
+
+**Lifts (`regular::lift`).** The core takes integer lifts (`regular::from_lifts`); heights,
+weights and Delaunay are thin wrappers. A `Scalar` is `Float(f64)` (its exact dyadic
+value), `Integer(IBig)` or `Rational`; all are brought to a common denominator (lcm) and
+carried as `IBig`, kept as `i64` inside the predicates when they fit. `|p|²` comes from the
+*original* coordinates. Rejected with `Error::InvalidParameter` (new; `ValueError`):
+non-finite and subnormal floats, zero denominators, and scaled lifts wider than
+`lift::MAX_LIFT_BITS = 1280` bits — about a thousand binary orders of magnitude of
+spread, e.g. `1e-200` next to `1e200`. That cap is a judgement call; revisit it if a real
+input hits it.
+
+**Ties: CGAL's rule, not input index.** `CGAL.md` §4.4 recommended perturbing by input
+index; that would have produced valid triangulations differing from 0.3 on every
+cospherical fixture. CGAL's `perturbed_power_side_of_power_sphere` is itself a consistent
+symbolic perturbation of the lifts (`ℓᵢ + ε^π(i)`, the lexicographically largest point by
+coordinates raised most), so its output is the *unique* regular triangulation of the
+perturbed lifts, independent of CGAL's randomised insertion order. Implementing the same
+rule reproduces the oracle on every trusted fixture. The order compares the original
+coordinates and breaks ties between duplicates by label (higher label raised more), so
+among duplicates with equal lifts the lowest label survives — the deterministic B5 choice.
+The infinite-cell tie (query on a hull facet's hyperplane) defers to the finite cell
+across the facet, as CGAL does. The cospherical fixtures are therefore *not* ambiguous for
+this port: the rule is part of the output contract, and changing it changes results.
+
+**Algorithm.** Affine-hull reduction first (`Config::reduce_to_hull`), then: dimension 0
+is the lowest lift; otherwise an initial simplex (first affinely independent points in
+label order) with its `d + 1` infinite cells, and every other point inserted in label
+order. No spatial sort: 20 000 random points in the plane take about a second through
+Python, 1 000 in dimension 4 under half a second; add BRIO/Hilbert ordering only if
+profiling asks. The walk is CGAL's remembering visibility walk with a seeded xorshift
+start index, capped at one step per live cell (regular triangulations are acyclic for the
+in-front relation, so exact predicates never need more); exceeding it is `Error::Internal`.
+Hole retriangulation links new cells by hashing their facets
+(`Tds::link_unlinked`); an unmatched facet is `Error::Internal`, never a corrupt mesh. The
+TDS stores mirror indices as `u8`, hence a dimension cap of 254 (`Error::Overflow`).
+
+**Results.** A plain `triang::Triangulation` with `rank = dim(aff P) + 1`; hidden points
+are `unused()`. An empty configuration is `Error::EmptyConfiguration` (0.3 returned an
+empty array). Python: `PointConfiguration.delaunay_triangulation()`,
+`triangulate_with_weights(seq)`, `triangulate_with_heights(seq)` — a `float` (or numpy
+float) is taken as its exact double, an `int` (any size) or `numbers.Rational` such as
+`Fraction` exactly, anything else through `__float__` — and `Triangulation.hidden_points`,
+a sorted `list[int]` (`unused()`, so for placing triangulations it lists the unused
+points). Locking happens only on success, as for the other methods.
+
 ### Verified vs not
 
 Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
@@ -994,6 +1063,12 @@ Phase 1 was verified locally on Linux x86_64, Python 3.13: `cargo test`, clippy 
 skip), the 10⁶-matrix harness in release, and `gen_fixtures.py --only single_point`. Phase 1
 has **not** yet been through CI; nothing in it is platform-specific, but the `f64` filter's
 soundness argument assumes IEEE round-to-nearest, which holds on all four CI targets.
+
+Phase 6 was verified locally on Linux x86_64: `cargo test` (85 tests, 2 ignored),
+the ignored 20 000-configuration release fuzz, clippy with `-D warnings` and `cargo doc`
+on both feature sets, `cargo fmt --check`, and pytest (28 pass, 5 skip, all skips
+Phase 3–5). `prek -a` reports ruff findings only in files this phase did not touch
+(`test_triangulation_api.py`, `gen_topcom_fixtures.py`), which are unchanged from Phase 2.
 
 Phase 2 was verified locally on Linux x86_64, Python 3.13: `cargo test` (69 tests),
 clippy with `-D warnings` and `cargo doc` with `-D warnings` on both feature sets,
