@@ -22,6 +22,8 @@ fn construction(c: &mut Criterion) {
     for (name, config) in [
         ("random_100x3", random_points(1, 100, 3, 1000)),
         ("random_60x4", random_points(2, 60, 4, 1000)),
+        // Labels past 128: spilled simplices.
+        ("random_300x3", random_points(4, 300, 3, 10_000)),
     ] {
         g.bench_function(format!("placing/{name}"), |b| {
             b.iter(|| placing(&config.chirotope().unwrap()).unwrap())

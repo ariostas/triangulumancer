@@ -5,6 +5,7 @@
 //! section 4), including the fork's patch for degenerate circuits.
 
 use super::{Triangulation, placing};
+use crate::arith::Sign;
 use crate::error::Result;
 use crate::om::{Circuit, OrientedMatroid};
 use crate::simplex::{Simplex, SimplexSet};
@@ -48,6 +49,9 @@ fn flip_in(om: &impl OrientedMatroid, t: &mut SimplexSet, i: usize) -> Result<()
     for s in t.iter() {
         let mut dependent = s.clone();
         dependent.insert(i);
+        if !alone_in_circuit(om, &dependent, i)? {
+            continue;
+        }
         let z = Circuit::of_dependent_set(om, &dependent)?;
         // `i` alone on one side: the other side is the face it subdivides.
         // The circuit's own orientation is arbitrary, so try both; a circuit
@@ -78,6 +82,38 @@ fn flip_in(om: &impl OrientedMatroid, t: &mut SimplexSet, i: usize) -> Result<()
     }
     t.extend(upper.join(&link));
     Ok(())
+}
+
+/// Whether `i` is alone on one side of the circuit in `dependent` (a basis
+/// plus `i`) with the other side non-empty: the test below on
+/// [`Circuit::of_dependent_set`], decided from the same coefficients but
+/// stopping at the first one on `i`'s side, so that the simplices not
+/// containing `i` — nearly all of them — usually cost one or two signs
+/// rather than `rank + 1`.
+fn alone_in_circuit(om: &impl OrientedMatroid, dependent: &Simplex, i: usize) -> Result<bool> {
+    let coefficient = |pos: usize, e: usize| -> Result<Sign> {
+        let mut basis = dependent.clone();
+        basis.remove(e);
+        let chi = om.sign(&basis)?;
+        Ok(if pos % 2 == 0 { chi } else { -chi })
+    };
+    let pos_i = dependent.iter().position(|e| e == i).unwrap_or(0);
+    let side = coefficient(pos_i, i)?;
+    if side.is_zero() {
+        return Ok(false);
+    }
+    let mut other = false;
+    for (pos, e) in dependent.iter().enumerate() {
+        if e == i {
+            continue;
+        }
+        let c = coefficient(pos, e)?;
+        if c == side {
+            return Ok(false);
+        }
+        other |= !c.is_zero();
+    }
+    Ok(other)
 }
 
 #[cfg(test)]

@@ -3,10 +3,9 @@
 //! A port of TOPCOM's `PlacingTriang` (`lib-src/PlacingTriang.cc`;
 //! `TOPCOM.md` section 3): beneath–beyond on the chirotope alone.
 
-use std::collections::BTreeMap;
-
 use super::Triangulation;
 use crate::error::{Error, Result};
+use crate::hash::FastHashMap;
 use crate::om::OrientedMatroid;
 use crate::simplex::Simplex;
 
@@ -42,7 +41,7 @@ pub fn placing(om: &impl OrientedMatroid) -> Result<Triangulation> {
     let mut simplices = vec![start.clone()];
     // The boundary of the triangulation so far: each facet in exactly one
     // simplex, mapped to the vertex of that simplex opposite it.
-    let mut boundary: BTreeMap<Simplex, usize> = BTreeMap::new();
+    let mut boundary: FastHashMap<Simplex, usize> = FastHashMap::default();
     toggle_facets(&mut boundary, &start);
 
     for i in (0..n).filter(|&i| !start.contains(i)) {
@@ -51,7 +50,7 @@ pub fn placing(om: &impl OrientedMatroid) -> Result<Triangulation> {
         // `F ∪ {i}` only changes the link of `F` itself, so the order does not
         // matter. The boundary is then updated by symmetric difference, which
         // cancels every facet now shared by two simplices.
-        let mut new_facets: BTreeMap<Simplex, usize> = BTreeMap::new();
+        let mut new_facets: FastHashMap<Simplex, usize> = FastHashMap::default();
         for (facet, &apex) in &boundary {
             let side_i = om.sign_appended(facet, i)?;
             if side_i.is_zero() {
@@ -77,7 +76,7 @@ pub fn placing(om: &impl OrientedMatroid) -> Result<Triangulation> {
 
 /// Toggle every facet of `simplex` in `set`, recording its opposite vertex: a
 /// symmetric difference with the boundary of `simplex`.
-fn toggle_facets(set: &mut BTreeMap<Simplex, usize>, simplex: &Simplex) {
+fn toggle_facets(set: &mut FastHashMap<Simplex, usize>, simplex: &Simplex) {
     for v in simplex {
         let mut f = simplex.clone();
         f.remove(v);
