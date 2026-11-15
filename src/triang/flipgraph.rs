@@ -8,10 +8,11 @@
 //!   back to the parent so as never to revisit the layer it discarded. Keeping
 //!   every triangulation seen in one set makes the marking unnecessary, at the
 //!   cost of memory proportional to the output (`TOPCOM.md` section 6.2).
-//! * **Naive flip sets.** Each triangulation's flips are recomputed from
-//!   scratch ([`flip_reps`]) rather than updated from its parent's
-//!   (`TOPCOM.md` section 5.3); the incremental update is a phase 7
-//!   optimisation, with this as its oracle.
+//! * **Incremental flip sets**, as in TOPCOM (`TOPCOM.md` section 5.3): a
+//!   triangulation's flips are updated from those of the triangulation it was
+//!   found from ([`flip_reps_after`]); only the seed's are computed from
+//!   scratch ([`flip_reps`]), which remains the oracle debug builds check
+//!   every update against.
 //!
 //! The enumeration is **streaming** (`PLAN.md` section 5.4): [`FlipGraph`] is
 //! an iterator that yields each triangulation as it is discovered, so a caller
@@ -34,9 +35,10 @@
 //! yields nothing. 0.3 seeded this search with the placing triangulation
 //! instead, which is bug B1 (`PLAN.md` section 3).
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
+use std::sync::Arc;
 
-use super::flip::flip_reps;
+use super::flip::{Flip, FlipRep, flip_reps, flip_reps_after};
 use super::{Triangulation, fine, placing};
 use crate::error::Result;
 use crate::hash::FastHashSet;
@@ -61,12 +63,19 @@ pub struct FlipGraph<O, S = TrivialGroup> {
     symmetry: S,
     only_fine: bool,
     visited: FastHashSet<Triangulation>,
-    /// Triangulations found whose flips have not been explored yet.
-    frontier: VecDeque<Triangulation>,
+    /// Triangulations found whose flips have not been explored yet, each
+    /// with the flips of the triangulation it was found from and the flip
+    /// that led to it, from which its own flips are updated
+    /// ([`flip_reps_after`]). `None` for the seed.
+    frontier: VecDeque<(Triangulation, Option<Origin>)>,
     /// Triangulations found and not yet yielded.
     pending: VecDeque<Triangulation>,
     failed: bool,
 }
+
+/// Where a triangulation on the frontier came from: its parent's flips,
+/// shared between siblings, and the flip from the parent.
+type Origin = (Arc<BTreeSet<FlipRep>>, Flip);
 
 impl<O: OrientedMatroid> FlipGraph<O, TrivialGroup> {
     /// The flip graph of `om` with the trivial group, seeded as 0.3 seeded it
@@ -108,7 +117,7 @@ impl<O: OrientedMatroid, S: Symmetry> FlipGraph<O, S> {
             failed: false,
         };
         if !only_fine || seed.is_fine() {
-            graph.discover(seed);
+            graph.discover(seed, None);
         }
         graph
     }
@@ -118,29 +127,36 @@ impl<O: OrientedMatroid, S: Symmetry> FlipGraph<O, S> {
         self.visited.len()
     }
 
-    fn discover(&mut self, t: Triangulation) {
+    fn discover(&mut self, t: Triangulation, origin: Option<Origin>) {
         if self.visited.insert(t.clone()) {
             // TOPCOM's output predicate; always true for the trivial group.
             if self.symmetry.is_orbit_representative(&t) {
                 self.pending.push_back(t.clone());
             }
-            self.frontier.push_back(t);
+            self.frontier.push_back((t, origin));
         }
     }
 
     /// Explore the flips of the next triangulation on the frontier. Returns
     /// whether there was one.
     fn expand(&mut self) -> Result<bool> {
-        let Some(t) = self.frontier.pop_front() else {
+        let Some((t, origin)) = self.frontier.pop_front() else {
             return Ok(false);
         };
         // TOPCOM computes the stabiliser here and adds every flip equivalent
         // under it (`TriangFlips.cc:84-95`); the trivial group's is `()`.
         let _stabilizer = self.symmetry.stabilizer(&t);
-        for rep in flip_reps(&self.om, &t, self.only_fine)? {
-            let next = rep.expand(&t).apply(&t)?;
+        let flips = Arc::new(match origin {
+            None => flip_reps(&self.om, &t, self.only_fine)?,
+            Some((parent_flips, flip)) => {
+                flip_reps_after(&self.om, &parent_flips, &flip, &t, self.only_fine)?
+            }
+        });
+        for rep in flips.iter() {
+            let flip = rep.expand(&t);
+            let next = flip.apply(&t)?;
             debug_assert!(!self.only_fine || next.is_fine());
-            self.discover(next);
+            self.discover(next, Some((Arc::clone(&flips), flip)));
         }
         Ok(true)
     }

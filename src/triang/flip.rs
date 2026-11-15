@@ -13,9 +13,9 @@
 //! adds.
 //!
 //! [`flip_reps`] recomputes the whole flip set of a triangulation from
-//! scratch. TOPCOM updates it incrementally along the flip graph
-//! (`TriangFlips.cc:20-35`, `TOPCOM.md` section 5.3); that is a phase 7
-//! optimisation, and this naive version is to remain its test oracle.
+//! scratch. [`flip_reps_after`] updates it along a flip, as TOPCOM does in the
+//! flip graph (`TriangFlips.cc:20-35`, `TOPCOM.md` section 5.3); the naive
+//! version is its oracle, asserted in debug builds.
 
 use std::collections::BTreeSet;
 
@@ -202,8 +202,12 @@ impl Flip {
     /// rank, which cannot happen for a flip [`expand`](FlipRep::expand)ed
     /// against `t`.
     pub fn apply(&self, t: &Triangulation) -> Result<Triangulation> {
+        // `t`'s own simplices already have the right shape.
+        for s in &self.added {
+            super::check_shape(s, t.n(), t.rank())?;
+        }
         let simplices = t.simplices().difference(&self.removed).union(&self.added);
-        Triangulation::new(t.n(), t.rank(), simplices)
+        Ok(Triangulation::from_trusted(t.n(), t.rank(), simplices))
     }
 }
 
@@ -271,6 +275,79 @@ pub fn flip_reps(
             out.insert(rep);
         }
     }
+    Ok(out)
+}
+
+/// The flips of `child = flip.apply(parent)`, updated from those of `parent`
+/// rather than recomputed. TOPCOM's incremental `TriangFlips` constructor
+/// (`TriangFlips.hh:89-105`, `TOPCOM.md` section 5.3).
+///
+/// * A flip of `parent` is kept unless the simplices it removes meet those
+///   `flip` removed (`_remove_destroyed_flips`). The simplices a flip `G`
+///   removes are the whole star of `supp(G) \ {z}` for each `z` on its
+///   removed side, so the test is whether some removed simplex contains such
+///   a face; no expansion is needed.
+/// * New flips need a simplex `flip` added, so only the candidates of
+///   [`flip_reps`] that contain one are tried (`_add_new_flips` restricted to
+///   `flip.second`).
+///
+/// `parent_flips` must be `flip_reps(om, parent, forbid_vertex_removal)`. The
+/// result is the same set as `flip_reps(om, child, forbid_vertex_removal)`,
+/// which debug builds assert.
+///
+/// # Errors
+///
+/// As [`flip_reps`].
+pub fn flip_reps_after(
+    om: &impl OrientedMatroid,
+    parent_flips: &BTreeSet<FlipRep>,
+    flip: &Flip,
+    child: &Triangulation,
+    forbid_vertex_removal: bool,
+) -> Result<BTreeSet<FlipRep>> {
+    check_matches(om, child)?;
+    let rank = child.rank();
+    let destroyed = |g: &FlipRep| {
+        let support = g.support();
+        flip.removed().iter().any(|r| {
+            let outside = &support - r;
+            outside.len() == 1 && outside.first().is_some_and(|z| g.removed.contains(z))
+        })
+    };
+    let mut out: BTreeSet<FlipRep> = parent_flips
+        .iter()
+        .filter(|g| !destroyed(g))
+        .cloned()
+        .collect();
+
+    let unused = child.unused();
+    let mut candidates: FastHashSet<Simplex> = FastHashSet::default();
+    for s in flip.added() {
+        for v in &unused {
+            let mut set = s.clone();
+            set.insert(v);
+            candidates.insert(set);
+        }
+        for t in child.iter() {
+            let set = s | t;
+            if set.len() == rank + 1 {
+                candidates.insert(set);
+            }
+        }
+    }
+    for set in &candidates {
+        if let Some(rep) = FlipRep::of_dependent_set(om, set, child)? {
+            if forbid_vertex_removal && rep.kills_vertex() {
+                continue;
+            }
+            out.insert(rep);
+        }
+    }
+    debug_assert_eq!(
+        Ok(&out),
+        flip_reps(om, child, forbid_vertex_removal).as_ref(),
+        "incremental flips disagree with the naive ones"
+    );
     Ok(out)
 }
 
