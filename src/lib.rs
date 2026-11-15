@@ -110,6 +110,7 @@ pub use error::{Error, Result};
 /// `1 * is_pc` integer arithmetic. Keeping it a type makes the rank and simplex
 /// sizes derivable in one place.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ConfigKind {
     /// Points in affine space, homogenised with a trailing `1`.
     Point,
