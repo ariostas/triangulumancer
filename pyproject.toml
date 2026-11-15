@@ -4,13 +4,14 @@ build-backend = "maturin"
 
 [project]
 name = "triangulumancer"
-description = "Construct triangulations of point configurations."
+description = "Triangulations of point and vector configurations: regular, Delaunay, placing and fine triangulations, bistellar flips, and enumeration."
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [
     {name = "Andres Rios Tascon"}
 ]
+keywords = ["triangulation", "delaunay", "regular triangulation", "polytope", "geometry", "combinatorics", "topcom"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -45,6 +46,8 @@ test = [
 
 [project.urls]
 Repository = "https://github.com/ariostas/triangulumancer"
+Issues = "https://github.com/ariostas/triangulumancer/issues"
+Changelog = "https://github.com/ariostas/triangulumancer/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 python-source = "python"
@@ -59,6 +62,7 @@ features = ["python", "pyo3/extension-module"]
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
     { file = "src/**/*.rs" },
 ]
 
