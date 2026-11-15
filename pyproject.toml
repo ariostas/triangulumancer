@@ -56,6 +56,17 @@ module-name = "triangulumancer._core"
 # enabled here; plain `cargo build` then does not have to compile pyo3.
 features = ["python", "pyo3/extension-module"]
 
+[tool.cibuildwheel]
+# The wheels `deploy.yml` builds; `python.yml` checks the selection on every push.
+# abi3-py310 covers every GIL-enabled CPython with a single wheel, but
+# free-threaded 3.14 has no stable ABI (abi3t arrives with 3.15, per PEP 803), so
+# it needs its own version-specific wheel. cp314 builds nothing new: cibuildwheel
+# reuses the cp310 abi3 wheel and only tests it, on the newest interpreter.
+build = ["cp310-*", "cp314-*", "cp314t-*"]
+# 32-bit targets: the runners' Rust toolchains do not include them, and 0.3 did
+# not ship them either.
+skip = ["*_i686", "*-win32"]
+
 [tool.uv]
 # Without these, uv will not rebuild the extension module when only the Rust
 # sources change, so `uv run pytest` would test a stale build.

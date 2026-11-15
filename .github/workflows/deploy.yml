@@ -40,7 +40,10 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v7
       - name: Build wheels
-        run: pipx run cibuildwheel
+        # Pinned, so that a new cibuildwheel cannot change the build under a
+        # release; dependabot bumps it. `python.yml` reads this version back for
+        # its build-selection smoke test, so the two cannot drift apart.
+        uses: pypa/cibuildwheel@v4.3.5
         env:
           CIBW_ENVIRONMENT: 'CARGO_TERM_COLOR="always" MATURIN_PEP517_ARGS="--locked"'
           # Only the Linux builds run in a container, where rustup installs into
@@ -53,17 +56,9 @@ jobs:
             rustup show
           CIBW_TEST_COMMAND: "pytest -vv {project}/python/tests"
           CIBW_TEST_EXTRAS: test
-          # abi3-py310 covers every GIL-enabled CPython with a single wheel, but
-          # free-threaded 3.14 has no stable ABI (abi3t arrives with 3.15, per
-          # PEP 803), so it needs its own version-specific wheel. cp314 builds
-          # nothing new: cibuildwheel reuses the cp310 abi3 wheel and only tests
-          # it, on the newest interpreter.
-          CIBW_BUILD: "cp310-* cp314-* cp314t-*"
-          CIBW_ENABLE: cpython-freethreading
-          # 32-bit targets: the runners' Rust toolchains do not include them, and
-          # 0.3 did not ship them either.
-          CIBW_SKIP: "*_i686 *-win32"
           CIBW_BUILD_VERBOSITY: 1
+          # Which wheels to build (`build` and `skip`) is in pyproject.toml,
+          # under [tool.cibuildwheel], where the smoke test sees it too.
       - name: Upload wheels
         uses: actions/upload-artifact@v7
         with:
@@ -71,10 +66,32 @@ jobs:
           retention-days: 1
           path: wheelhouse/*.whl
 
+  check-release:
+    name: Check the release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+      # Both publishing jobs wait for this one, so a release whose tag does not
+      # match the crate's version, or whose crate would not publish, puts out
+      # neither package rather than one of the two.
+      - name: Check the tag matches the version in Cargo.toml
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[0].version')
+          if [ "${TAG#v}" != "$version" ]; then
+            echo "::error::release tag $TAG does not match version $version in Cargo.toml"
+            exit 1
+          fi
+      - name: Check the crate would publish
+        run: cargo publish --locked --dry-run
+
   deploy-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build-wheels, make-sdist]
+    needs: [build-wheels, make-sdist, check-release]
     environment:
       name: pypi
       url: https://pypi.org/p/triangulumancer
@@ -95,7 +112,7 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     # Just to make sure both get deployed together.
-    needs: [build-wheels, make-sdist]
+    needs: [build-wheels, make-sdist, check-release]
     environment:
       name: crates.io
       url: https://crates.io/crates/triangulumancer

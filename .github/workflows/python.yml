@@ -52,10 +52,42 @@ jobs:
           sed 's/^```.*$//' README.md > "$RUNNER_TEMP/README.txt"
           python -m doctest -o ELLIPSIS "$RUNNER_TEMP/README.txt"
 
+  wheel-selection:
+    name: Check the wheel selection
+    runs-on: ubuntu-latest
+    # `deploy.yml` only runs on a release, so a cibuildwheel configuration it can
+    # no longer parse would otherwise surface only then. This asks the same
+    # pinned cibuildwheel, with the same configuration, which wheels it would
+    # build on each platform, and checks the answer is exactly cp310 (the abi3
+    # wheel), cp314 (its test on the newest interpreter) and cp314t for each
+    # platform tag.
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+      - name: Print and check the build identifiers
+        shell: bash
+        run: |
+          version=$(grep -oP 'pypa/cibuildwheel@v\K[0-9.]+' .github/workflows/deploy.yml)
+          for platform in linux macos windows; do
+            pipx run "cibuildwheel==$version" --print-build-identifiers --platform "$platform" \
+              | tee "$RUNNER_TEMP/ids"
+            python3 - "$RUNNER_TEMP/ids" <<'EOF'
+          import collections, sys
+          by_tag = collections.defaultdict(set)
+          for line in open(sys.argv[1]).read().split():
+              python, _, tag = line.partition("-")
+              by_tag[tag].add(python)
+          expected = {"cp310", "cp314", "cp314t"}
+          bad = {tag: sorted(got) for tag, got in by_tag.items() if got != expected}
+          if not by_tag or bad:
+              sys.exit(f"unexpected wheel selection: {dict(by_tag) or 'nothing'}")
+          EOF
+          done
+
   check-python:
     name: Check Python
     if: always()
-    needs: [build-and-test]
+    needs: [build-and-test, wheel-selection]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
