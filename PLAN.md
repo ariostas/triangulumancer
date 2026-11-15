@@ -844,8 +844,8 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 119 tests, plus the `#[ignore]`d 10⁶-matrix, full flip-graph, 20 000-configuration regular-fuzz, full extension-graph and `vc_degenerate_flip` runs |
-| Python | `pytest`: 52 pass, no skips |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 128 tests, plus the `#[ignore]`d 10⁶-matrix, full flip-graph, 20 000-configuration regular-fuzz, full extension-graph, `vc_degenerate_flip`, 600-configuration brute-force, long invariance and 50 000-point Delaunay-memory runs |
+| Python | `pytest`: 62 pass, no skips |
 | Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, ~245 KiB, TOPCOM's own CLI tools |
 
 ### What exists in `src/`
@@ -1304,7 +1304,9 @@ are `unused()`. An empty configuration is `Error::EmptyConfiguration` (0.3 retur
 empty array). Python: `PointConfiguration.delaunay_triangulation()`,
 `triangulate_with_weights(seq)`, `triangulate_with_heights(seq)` — a `float` (or numpy
 float) is taken as its exact double, an `int` (any size) or `numbers.Rational` such as
-`Fraction` exactly, anything else through `__float__` — and `Triangulation.hidden_points`,
+`Fraction` exactly (ints are read through `__index__` in hexadecimal, so Python's
+4 300-digit limit on decimal conversion does not apply), anything else through
+`__float__` — and `Triangulation.hidden_points`,
 a sorted `list[int]` (`unused()`, so for placing triangulations it lists the unused
 points). Locking happens only on success, as for the other methods.
 
@@ -1348,6 +1350,23 @@ TOPCOM comparison in release (92 s), clippy and `cargo doc` with `-D warnings` o
 feature sets, `cargo fmt --check`, `prek -a`, and pytest (52 pass, 0 skip; the 387/64 and
 131/1 tests now run to the end). Every heavy command ran under
 `systemd-run --user --scope -p MemoryMax=3G` — see the warning in §14.
+
+**Post-Phase-6 review fixes** (Linux x86_64, Python 3.13): `Simplex` spills to a sorted
+label list (O(rank) per simplex; Delaunay of 40 000 random 3-D points through Python went
+from a 1 116 MB to a 78 MB peak, 100 000 points take 150 MB and 13 s; placing, fine and
+flips on 200–300 points are about 10 % slower than with the bitset spill); configuration
+pyclasses are `frozen` with the `Lockable` behind a mutex, computations run on a snapshot
+(no more `Already mutably borrowed` from other threads); the lift cap is shift- and
+scale-invariant; Python ints are converted through hexadecimal, so heights beyond 4 300
+decimal digits no longer hit Python's int-to-str limit. Ported from an adversarial review:
+`tests/brute_force.rs` (both enumerations, `check`, neighbour symmetry and the fine
+subsets against an independent brute-force oracle on degenerate lattice configurations),
+`tests/regular_invariance.rs` (Delaunay under similarities up to `2^60`, relabelling,
+coordinates near the `i64` limit against brute force, `f64` weights over the whole
+exponent range), `python/tests/test_bad_input.py` and `python/tests/test_threads.py`.
+Verified: `cargo test` (128 tests, 8 ignored; the ignored brute-force, invariance and
+memory runs pass in release), clippy with `-D warnings` on both feature sets,
+`cargo fmt --check`, `prek -a`, pytest (62 pass, 0 skip).
 
 **Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
@@ -1404,13 +1423,13 @@ git clone git@github.com:ariostas/triangulumancer.git
 cd triangulumancer
 git checkout rust-migration
 
-cargo test                                      # should pass, 119 tests (5 ignored)
+cargo test                                      # should pass, 128 tests (8 ignored)
 cargo clippy --all-targets -- -D warnings
 cargo clippy --features python --all-targets -- -D warnings
 
 uv venv .venv-dev
 VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
-.venv-dev/bin/python -m pytest                  # should give 52 passes, no skips
+.venv-dev/bin/python -m pytest                  # should give 62 passes, no skips
 
 prek -a --quiet                                 # all hooks should pass
 ```
