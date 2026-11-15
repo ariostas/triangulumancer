@@ -17,10 +17,11 @@
 //! (`TriangFlips.cc:20-35`, `TOPCOM.md` section 5.3); that is a phase 7
 //! optimisation, and this naive version is to remain its test oracle.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
 
 use super::Triangulation;
 use crate::error::{Error, Result};
+use crate::hash::{FastHashMap, FastHashSet};
 use crate::om::{Circuit, OrientedMatroid};
 use crate::simplex::{Simplex, SimplexSet};
 
@@ -201,8 +202,7 @@ impl Flip {
     /// rank, which cannot happen for a flip [`expand`](FlipRep::expand)ed
     /// against `t`.
     pub fn apply(&self, t: &Triangulation) -> Result<Triangulation> {
-        let mut simplices = t.simplices().difference(&self.removed);
-        simplices.extend(self.added.iter().cloned());
+        let simplices = t.simplices().difference(&self.removed).union(&self.added);
         Triangulation::new(t.n(), t.rank(), simplices)
     }
 }
@@ -236,14 +236,14 @@ pub fn flip_reps(
 
     // Simplices by facet, to find the ones sharing a facet without TOPCOM's
     // quadratic scan; the candidates are the same.
-    let mut by_facet: HashMap<Simplex, Vec<&Simplex>> = HashMap::new();
+    let mut by_facet: FastHashMap<Simplex, Vec<&Simplex>> = FastHashMap::default();
     for s in t.iter() {
         for f in s.facets() {
             by_facet.entry(f).or_default().push(s);
         }
     }
 
-    let mut candidates: HashSet<Simplex> = HashSet::new();
+    let mut candidates: FastHashSet<Simplex> = FastHashSet::default();
     for s in t.iter() {
         for v in &unused {
             let mut set = s.clone();

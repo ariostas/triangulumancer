@@ -46,6 +46,7 @@
 pub mod arith;
 pub mod config;
 pub mod error;
+mod hash;
 pub mod om;
 pub mod regular;
 pub mod simplex;

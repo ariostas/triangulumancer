@@ -1,6 +1,5 @@
 //! The chirotope of a configuration, evaluated lazily and memoised.
 
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::{PoisonError, RwLock};
 
@@ -8,6 +7,7 @@ use super::{OrientedMatroid, check_basis};
 use crate::arith::Sign;
 use crate::config::{Config, Kind, VectorConfig};
 use crate::error::Result;
+use crate::hash::FastHashMap;
 use crate::simplex::Simplex;
 
 /// The chirotope of a full-rank configuration: `χ(B) = sign det(columns of B)`
@@ -26,7 +26,7 @@ pub struct Chirotope {
     /// The homogenised configuration: a point configuration's columns with
     /// their trailing `1`, as vectors.
     vectors: VectorConfig,
-    cache: RwLock<HashMap<Simplex, Sign>>,
+    cache: RwLock<FastHashMap<Simplex, Sign>>,
 }
 
 impl Chirotope {
@@ -45,7 +45,7 @@ impl Chirotope {
             VectorConfig::from_row_major(config.homogenised(), config.len(), config.rows())?;
         Ok(Self {
             vectors,
-            cache: RwLock::new(HashMap::new()),
+            cache: RwLock::new(FastHashMap::default()),
         })
     }
 

@@ -271,7 +271,10 @@ impl Tables {
     /// The triangulation of the simplices at `chosen`.
     fn triangulation(&self, chosen: &[usize]) -> Triangulation {
         let universe = self.admissibles.universe();
-        let simplices: SimplexSet = chosen.iter().map(|&i| universe[i].clone()).collect();
+        // `chosen` is increasing (a child only takes simplices after its
+        // parent's) and the universe is in canonical order, so this is sorted.
+        let simplices =
+            SimplexSet::from_sorted_vec(chosen.iter().map(|&i| universe[i].clone()).collect());
         Triangulation::from_trusted(self.n, self.rank, simplices)
     }
 }

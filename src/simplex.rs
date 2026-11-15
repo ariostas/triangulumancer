@@ -31,7 +31,6 @@
 //! [`insert_boundary`]: SimplexSet::insert_boundary
 
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 
@@ -585,12 +584,18 @@ set_ops! {
 /// (TOPCOM's `SimplicialComplex`), or a triangulation given by its maximal
 /// simplices.
 ///
-/// Iterates in canonical order. Equality, ordering and hashing are those of the
-/// underlying sorted set, so two triangulations with the same simplices are
-/// equal however they were built.
+/// Stored flat, as a strictly increasing vector of simplices: iteration is
+/// canonical, membership is a binary search, and equality, ordering and
+/// hashing are those of the sorted list, so two triangulations with the same
+/// simplices are equal however they were built. A flat list is several times
+/// cheaper than a tree to build, compare, hash and drop, which is what the
+/// enumerations do with triangulations most (`PLAN.md` section 13, phase 7);
+/// inserting or removing one simplex costs O(len), which the algorithms here
+/// only do a bounded number of times per pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SimplexSet {
-    simplices: BTreeSet<Simplex>,
+    /// Strictly increasing.
+    simplices: Vec<Simplex>,
 }
 
 impl SimplexSet {
@@ -599,19 +604,38 @@ impl SimplexSet {
         Self::default()
     }
 
+    /// The set of a strictly increasing list of simplices, which the caller
+    /// guarantees (checked in debug builds only).
+    pub(crate) fn from_sorted_vec(simplices: Vec<Simplex>) -> Self {
+        debug_assert!(simplices.windows(2).all(|w| w[0] < w[1]));
+        Self { simplices }
+    }
+
     /// Add a simplex. Returns whether it was newly added.
     pub fn insert(&mut self, simplex: Simplex) -> bool {
-        self.simplices.insert(simplex)
+        match self.simplices.binary_search(&simplex) {
+            Ok(_) => false,
+            Err(i) => {
+                self.simplices.insert(i, simplex);
+                true
+            }
+        }
     }
 
     /// Remove a simplex. Returns whether it was present.
     pub fn remove(&mut self, simplex: &Simplex) -> bool {
-        self.simplices.remove(simplex)
+        match self.simplices.binary_search(simplex) {
+            Ok(i) => {
+                self.simplices.remove(i);
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     /// Whether `simplex` is one of the listed simplices.
     pub fn contains(&self, simplex: &Simplex) -> bool {
-        self.simplices.contains(simplex)
+        self.simplices.binary_search(simplex).is_ok()
     }
 
     /// The number of simplices.
@@ -625,8 +649,13 @@ impl SimplexSet {
     }
 
     /// The simplices, in canonical order.
-    pub fn iter(&self) -> std::collections::btree_set::Iter<'_, Simplex> {
+    pub fn iter(&self) -> std::slice::Iter<'_, Simplex> {
         self.simplices.iter()
+    }
+
+    /// The simplices, in canonical order, as a slice.
+    pub fn as_slice(&self) -> &[Simplex] {
+        &self.simplices
     }
 
     /// The simplices as sorted label lists, in canonical order: the form the
@@ -675,11 +704,14 @@ impl SimplexSet {
 
     /// The simplices containing `simplex` (itself included, if present).
     pub fn star(&self, simplex: &Simplex) -> Self {
-        self.simplices
-            .iter()
-            .filter(|t| simplex.is_subset(t))
-            .cloned()
-            .collect()
+        // A subsequence of a sorted list is sorted.
+        Self::from_sorted_vec(
+            self.simplices
+                .iter()
+                .filter(|t| simplex.is_subset(t))
+                .cloned()
+                .collect(),
+        )
     }
 
     /// `{ t \ simplex : t in self, simplex ⊆ t }`.
@@ -708,68 +740,101 @@ impl SimplexSet {
     /// Joining with the empty set gives the empty set, and joining with the set
     /// holding only the empty simplex is the identity, as in TOPCOM.
     pub fn join(&self, other: &Self) -> Self {
-        let mut out = Self::new();
-        for s in &self.simplices {
-            for t in &other.simplices {
-                out.insert(s | t);
-            }
-        }
-        out
+        self.simplices
+            .iter()
+            .flat_map(|s| other.simplices.iter().map(move |t| s | t))
+            .collect()
     }
 
     /// Add every facet of `simplex`. Adds nothing for the empty simplex.
     pub fn insert_boundary(&mut self, simplex: &Simplex) {
-        for f in simplex.facets() {
-            self.insert(f);
-        }
+        self.extend(simplex.facets());
     }
 
     /// The facets of `simplex`, as a set.
     pub fn boundary(simplex: &Simplex) -> Self {
-        let mut out = Self::new();
-        out.insert_boundary(simplex);
-        out
+        simplex.facets().collect()
     }
 
     /// The simplices in either set.
     pub fn union(&self, other: &Self) -> Self {
-        self.simplices.union(&other.simplices).cloned().collect()
+        self.merge(other, true, true, true)
     }
 
     /// The simplices in both sets.
     pub fn intersection(&self, other: &Self) -> Self {
-        self.simplices
-            .intersection(&other.simplices)
-            .cloned()
-            .collect()
+        self.merge(other, false, false, true)
     }
 
     /// The simplices of `self` not in `other`.
     pub fn difference(&self, other: &Self) -> Self {
-        self.simplices
-            .difference(&other.simplices)
-            .cloned()
-            .collect()
+        self.merge(other, true, false, false)
+    }
+
+    /// A sorted merge of the two lists, keeping the simplices only in `self`,
+    /// only in `other`, or in both, as asked.
+    fn merge(&self, other: &Self, only_a: bool, only_b: bool, both: bool) -> Self {
+        let (a, b) = (&self.simplices, &other.simplices);
+        let mut out = Vec::with_capacity(if only_b { a.len() + b.len() } else { a.len() });
+        let (mut i, mut j) = (0, 0);
+        while i < a.len() && j < b.len() {
+            match a[i].cmp(&b[j]) {
+                Ordering::Less => {
+                    if only_a {
+                        out.push(a[i].clone());
+                    }
+                    i += 1;
+                }
+                Ordering::Greater => {
+                    if only_b {
+                        out.push(b[j].clone());
+                    }
+                    j += 1;
+                }
+                Ordering::Equal => {
+                    if both {
+                        out.push(a[i].clone());
+                    }
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+        if only_a {
+            out.extend_from_slice(&a[i..]);
+        }
+        if only_b {
+            out.extend_from_slice(&b[j..]);
+        }
+        Self::from_sorted_vec(out)
     }
 }
 
 impl FromIterator<Simplex> for SimplexSet {
     fn from_iter<I: IntoIterator<Item = Simplex>>(iter: I) -> Self {
-        Self {
-            simplices: iter.into_iter().collect(),
-        }
+        let mut simplices: Vec<Simplex> = iter.into_iter().collect();
+        simplices.sort_unstable();
+        simplices.dedup();
+        Self { simplices }
     }
 }
 
 impl Extend<Simplex> for SimplexSet {
     fn extend<I: IntoIterator<Item = Simplex>>(&mut self, iter: I) {
-        self.simplices.extend(iter);
+        let added: SimplexSet = iter.into_iter().collect();
+        match added.len() {
+            0 => {}
+            1 => {
+                self.insert(added.simplices.into_iter().next().unwrap_or_default());
+            }
+            _ => *self = self.union(&added),
+        }
     }
 }
 
 impl<'a> IntoIterator for &'a SimplexSet {
     type Item = &'a Simplex;
-    type IntoIter = std::collections::btree_set::Iter<'a, Simplex>;
+    type IntoIter = std::slice::Iter<'a, Simplex>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.simplices.iter()
@@ -778,7 +843,7 @@ impl<'a> IntoIterator for &'a SimplexSet {
 
 impl IntoIterator for SimplexSet {
     type Item = Simplex;
-    type IntoIter = std::collections::btree_set::IntoIter<Simplex>;
+    type IntoIter = std::vec::IntoIter<Simplex>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.simplices.into_iter()
@@ -835,6 +900,7 @@ impl Iterator for Combinations {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
     fn combinations_are_lexicographic_and_complete() {

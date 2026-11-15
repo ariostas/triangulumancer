@@ -3,10 +3,9 @@
 //! A port of TOPCOM's `CheckTriang` (`lib-src/CheckTriang.cc`), without the
 //! symmetry bookkeeping. See [`Triangulation::check`] for the criteria.
 
-use std::collections::HashMap;
-
 use super::Triangulation;
 use crate::error::{Error, Result};
+use crate::hash::FastHashMap;
 use crate::om::OrientedMatroid;
 use crate::simplex::Simplex;
 
@@ -33,7 +32,7 @@ pub(super) fn check(om: &impl OrientedMatroid, t: &Triangulation) -> Result<()> 
     };
 
     // (1) Every simplex is a basis; record each facet's apexes on the way.
-    let mut facets: HashMap<Simplex, Vec<usize>> = HashMap::new();
+    let mut facets: FastHashMap<Simplex, Vec<usize>> = FastHashMap::default();
     for s in t.iter() {
         if om.sign(s)?.is_zero() {
             return Err(invalid(format!("simplex {s} is degenerate")));

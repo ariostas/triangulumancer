@@ -34,11 +34,12 @@
 //! yields nothing. 0.3 seeded this search with the placing triangulation
 //! instead, which is bug B1 (`PLAN.md` section 3).
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 
 use super::flip::flip_reps;
 use super::{Triangulation, fine, placing};
 use crate::error::Result;
+use crate::hash::FastHashSet;
 use crate::om::OrientedMatroid;
 use crate::symmetry::{Symmetry, TrivialGroup};
 
@@ -59,7 +60,7 @@ pub struct FlipGraph<O, S = TrivialGroup> {
     om: O,
     symmetry: S,
     only_fine: bool,
-    visited: HashSet<Triangulation>,
+    visited: FastHashSet<Triangulation>,
     /// Triangulations found whose flips have not been explored yet.
     frontier: VecDeque<Triangulation>,
     /// Triangulations found and not yet yielded.
@@ -101,7 +102,7 @@ impl<O: OrientedMatroid, S: Symmetry> FlipGraph<O, S> {
             om,
             symmetry,
             only_fine,
-            visited: HashSet::new(),
+            visited: FastHashSet::default(),
             frontier: VecDeque::new(),
             pending: VecDeque::new(),
             failed: false,
