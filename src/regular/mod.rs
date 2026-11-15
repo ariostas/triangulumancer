@@ -122,10 +122,8 @@ pub fn from_lifts(config: &PointConfig, lifts: Vec<IBig>) -> Result<Triangulatio
     } else {
         let initial = initial_simplex(&reduced)?;
         let mut builder = insert::Builder::new(&geometry, &initial)?;
-        for p in 0..n as u32 {
-            if !initial.contains(&p) {
-                builder.insert(p)?;
-            }
+        for p in insertion_order(&reduced, &initial) {
+            builder.insert(p)?;
         }
         builder.finish().0
     };
@@ -134,6 +132,73 @@ pub fn from_lifts(config: &PointConfig, lifts: Vec<IBig>) -> Result<Triangulatio
         .map(|c| c.iter().map(|&v| v as usize).collect::<Simplex>())
         .collect();
     Triangulation::new(n, d + 1, simplices)
+}
+
+/// The order to insert every point but `initial` in: a biased randomised
+/// insertion order (BRIO) with each round sorted along a Z-order curve, as
+/// CGAL's range `insert` does with its Hilbert sort.
+///
+/// The result does not depend on the order — it is the unique regular
+/// triangulation of the symbolically perturbed lifts (see
+/// [`predicates`]) — but the cost does: in input order every point-location
+/// walk crosses a constant fraction of the triangulation, while along a
+/// space-filling curve it starts next to where the point lands. The random
+/// rounds (each holding about half the points not yet inserted) keep the
+/// triangulation well shaped for the curve to work on, which a single sorted
+/// pass does not guarantee. The shuffle is seeded, so the work done is
+/// deterministic.
+fn insertion_order(reduced: &PointConfig, initial: &[u32]) -> Vec<u32> {
+    let n = reduced.len();
+    let d = reduced.dim();
+    let mut order: Vec<u32> = (0..n as u32).filter(|p| !initial.contains(p)).collect();
+    // A seeded Fisher-Yates shuffle (xorshift64).
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    for i in (1..order.len()).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        order.swap(i, (state % (i as u64 + 1)) as usize);
+    }
+    let bits_per_dim = 128 / d.max(1);
+    if bits_per_dim == 0 || order.len() < 64 {
+        return order;
+    }
+    // Offsets from the minimum fit in a u64 whatever the coordinates.
+    let mut min = vec![i64::MAX; d];
+    for j in 0..n {
+        for (m, &x) in min.iter_mut().zip(reduced.coords(j).unwrap_or_default()) {
+            *m = (*m).min(x);
+        }
+    }
+    let offset = |j: u32, k: usize| {
+        let x = reduced.coords(j as usize).map_or(0, |c| c[k]);
+        (i128::from(x) - i128::from(min[k])) as u64
+    };
+    let width = (0..n as u32)
+        .flat_map(|j| (0..d).map(move |k| (j, k)))
+        .map(|(j, k)| 64 - offset(j, k).leading_zeros() as usize)
+        .max()
+        .unwrap_or(0);
+    let bits = bits_per_dim.min(width);
+    let shift = width - bits;
+    let key = |j: u32| {
+        let mut key = 0u128;
+        for b in (0..bits).rev() {
+            for k in 0..d {
+                key = (key << 1) | u128::from((offset(j, k) >> (shift + b)) & 1);
+            }
+        }
+        key
+    };
+    // Rounds from the back: the last half, then half of the rest, and so on;
+    // the first round takes what is left once a round would be small.
+    let mut end = order.len();
+    while end > 0 {
+        let start = if end <= 64 { 0 } else { end / 2 };
+        order[start..end].sort_by_cached_key(|&j| key(j));
+        end = start;
+    }
+    order
 }
 
 /// The first `dim + 1` affinely independent points, by greedy rank extension

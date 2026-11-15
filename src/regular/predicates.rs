@@ -69,6 +69,20 @@ pub(crate) struct Geometry {
 /// Small matrices are built on the stack.
 const INLINE: usize = 81;
 
+/// Run `f` on a zeroed scratch matrix of `len` entries: on the stack when it
+/// is small (in a buffer sized to match, since zeroing a large one costs as
+/// much as a `3 x 3` determinant), on the heap otherwise.
+#[inline]
+fn with_buffer<R>(len: usize, f: impl FnOnce(&mut [i128]) -> R) -> R {
+    if len <= 16 {
+        f(&mut [0i128; 16][..len])
+    } else if len <= INLINE {
+        f(&mut [0i128; INLINE][..len])
+    } else {
+        f(&mut vec![0i128; len])
+    }
+}
+
 impl Geometry {
     /// `reduced` is the full-rank, hull-reduced configuration the predicates
     /// run on; `original` supplies the perturbation order.
@@ -144,15 +158,10 @@ impl Geometry {
                 }
             }
         };
-        let sign = if d * d <= INLINE {
-            let mut buf = [0i128; INLINE];
-            fill(&mut buf[..d * d]);
-            arith::sign_of_det_of(&buf[..d * d], d)
-        } else {
-            let mut buf = vec![0i128; d * d];
-            fill(&mut buf);
-            arith::sign_of_det_of(&buf, d)
-        };
+        let sign = with_buffer(d * d, |buf| {
+            fill(buf);
+            arith::sign_of_det_of(buf, d)
+        });
         // The shape is right by construction.
         sign.unwrap_or(Sign::Zero)
     }
@@ -176,15 +185,10 @@ impl Geometry {
                         buf[i * n + d] = i128::from(l[v as usize]) - lq;
                     }
                 };
-                if n * n <= INLINE {
-                    let mut buf = [0i128; INLINE];
-                    fill(&mut buf[..n * n]);
-                    arith::sign_of_det_of(&buf[..n * n], n)
-                } else {
-                    let mut buf = vec![0i128; n * n];
-                    fill(&mut buf);
-                    arith::sign_of_det_of(&buf, n)
-                }
+                with_buffer(n * n, |buf| {
+                    fill(buf);
+                    arith::sign_of_det_of(buf, n)
+                })
             }
             Lifts::Big(l) => {
                 let lq = &l[q as usize];

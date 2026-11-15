@@ -13,7 +13,7 @@
 //! Vertices are point labels, so the index of every vertex is known without any
 //! search through coordinates (this is what fixes bug B5).
 
-use std::collections::HashMap;
+use crate::hash::FastHashMap;
 use std::collections::hash_map::Entry;
 
 use super::predicates::INF;
@@ -145,7 +145,7 @@ impl Tds {
     /// facet has exactly one partner; anything else means the conflict zone
     /// was not a ball, and is reported rather than producing a corrupt mesh.
     pub(crate) fn link_unlinked(&mut self, cells: &[u32]) -> Result<()> {
-        let mut open: HashMap<Vec<u32>, (u32, usize)> = HashMap::new();
+        let mut open: FastHashMap<Vec<u32>, (u32, usize)> = FastHashMap::default();
         for &c in cells {
             for i in 0..self.d1 {
                 if self.neighbor(c, i) != NONE {
