@@ -1,14 +1,19 @@
-//! Signed circuits.
+//! Signed circuits, and the predicates that say when a circuit is realised in
+//! a simplicial complex.
 //!
-//! Phase 2 needs only the circuit of a dependent `(rank + 1)`-set and its two
-//! triangulations, for the fine triangulation's flip-in. Phase 3 adds the flip
-//! predicates (`containment_ok`, `link_ok`) here, in the oriented-matroid layer
-//! rather than in `triang`, per `PLAN.md` section 6.1.
+//! The circuit of a dependent `(rank + 1)`-set is what the fine triangulation
+//! flips in (phase 2) and what every bistellar flip is supported on (phase 3).
+//! The flip predicates [`Circuit::containment_ok`] and [`Circuit::link_ok`]
+//! live here, in the oriented-matroid layer rather than in `triang`, per
+//! `PLAN.md` section 6.1: they need nothing but a circuit and a set of
+//! simplices.
+
+use std::collections::BTreeMap;
 
 use super::OrientedMatroid;
 use crate::arith::Sign;
 use crate::error::{Error, Result};
-use crate::simplex::{Simplex, SimplexSet};
+use crate::simplex::{Simplex, SimplexSet, combinations};
 
 /// A signed circuit `Z = (Z⁺, Z⁻)`: the unique minimal linear dependency
 /// among some elements, split by the sign of each coefficient.
@@ -113,6 +118,66 @@ impl Circuit {
         self.facets_dropping(&self.positive)
     }
 
+    /// Whether `complex` contains the triangulation of the support that uses
+    /// every element of `Z⁻`: every `supp(Z) \ {z}` for `z ∈ Z⁺`.
+    ///
+    /// For a circuit in *general position* (support of `rank + 1` elements)
+    /// this is the condition for a bistellar flip on `Z` to apply to a
+    /// triangulation containing `complex`'s simplices: the side of the flip
+    /// that is present is exactly [`lower_facets`](Self::lower_facets). True
+    /// when `Z⁺` is empty. TOPCOM's `TriangNode::containment_ok`
+    /// (`TriangNode.cc:20-32`).
+    pub fn containment_ok(&self, complex: &SimplexSet) -> bool {
+        let support = self.support();
+        self.positive.iter().all(|z| {
+            let mut facet = support.clone();
+            facet.remove(z);
+            complex.contains(&facet)
+        })
+    }
+
+    /// The *special-position* analogue of
+    /// [`containment_ok`](Self::containment_ok), for a circuit whose support
+    /// has fewer than `rank + 1` elements: whether every `supp(Z) \ {z}` for
+    /// `z ∈ Z⁺` has the same non-empty link in `complex`.
+    ///
+    /// Then the flip replaces the lower facets joined with that common link
+    /// ([`common_link`](Self::common_link)) by the upper facets joined with
+    /// it. Always false when `Z⁻` is empty, and always true for a circuit in
+    /// general position, whose common link is the empty simplex — both as in
+    /// TOPCOM's `TriangNode::link_ok` (`TriangNode.cc:34-76`), which this is.
+    pub fn link_ok(&self, complex: &SimplexSet, rank: usize) -> bool {
+        if self.negative.is_empty() {
+            return false;
+        }
+        if self.support().len() == rank + 1 {
+            return true;
+        }
+        self.common_link(complex).is_some()
+    }
+
+    /// The common link of the lower facets in `complex`: the link of
+    /// `supp(Z) \ {z}` for the first `z ∈ Z⁺`, provided it is non-empty and
+    /// every other `z ∈ Z⁺` gives the same one. `None` otherwise, and when
+    /// `Z⁺` is empty.
+    ///
+    /// This does not look at `Z⁻`; [`link_ok`](Self::link_ok) does.
+    pub fn common_link(&self, complex: &SimplexSet) -> Option<SimplexSet> {
+        let support = self.support();
+        let mut sides = self.positive.iter();
+        let first = sides.next()?;
+        let link = complex.link(&(&support - &Simplex::from([first])));
+        if link.is_empty() {
+            return None;
+        }
+        for z in sides {
+            if complex.link(&(&support - &Simplex::from([z]))) != link {
+                return None;
+            }
+        }
+        Some(link)
+    }
+
     fn facets_dropping(&self, side: &Simplex) -> SimplexSet {
         let support = self.support();
         side.iter()
@@ -123,6 +188,33 @@ impl Circuit {
             })
             .collect()
     }
+}
+
+/// Every circuit of `om`, one per support, ordered by support.
+///
+/// Each `(rank + 1)`-subset of the ground set contains exactly one circuit (or
+/// none, when every `rank`-subset of it is dependent); collecting them and
+/// dropping repeated supports gives every circuit, each in the orientation of
+/// [`Circuit::of_dependent_set`]. This is TOPCOM's `Circuits` and the output
+/// of `points2circuits`, which prints the same set in hash-table order. Empty
+/// when `n == rank`.
+///
+/// # Errors
+///
+/// Whatever [`OrientedMatroid::sign`] returns.
+pub fn circuits(om: &impl OrientedMatroid) -> Result<Vec<Circuit>> {
+    let (n, rank) = (om.n(), om.rank());
+    let mut by_support = BTreeMap::new();
+    if n > rank {
+        for set in combinations(n, rank + 1) {
+            let z = Circuit::of_dependent_set(om, &set)?;
+            let support = z.support();
+            if !support.is_empty() {
+                by_support.entry(support).or_insert(z);
+            }
+        }
+    }
+    Ok(by_support.into_values().collect())
 }
 
 #[cfg(test)]
@@ -174,5 +266,63 @@ mod tests {
         assert!(z.upper_facets().is_empty());
 
         assert!(Circuit::of_dependent_set(&chi, &Simplex::from([0, 1, 2])).is_err());
+    }
+
+    fn set(simplices: &[&[usize]]) -> SimplexSet {
+        simplices.iter().map(|s| Simplex::from(*s)).collect()
+    }
+
+    #[test]
+    fn containment_in_the_square() {
+        let z = Circuit::new(Simplex::from([0, 2]), Simplex::from([1, 3]));
+        let diagonal_02 = set(&[&[0, 1, 2], &[0, 2, 3]]);
+        let diagonal_13 = set(&[&[0, 1, 3], &[1, 2, 3]]);
+        // Z⁺ = {0, 2}: the lower facets drop 0 and 2, leaving the 1-3 diagonal.
+        assert!(z.containment_ok(&diagonal_13));
+        assert!(!z.containment_ok(&diagonal_02));
+        assert!(z.negated().containment_ok(&diagonal_02));
+        assert!(Circuit::new(Simplex::new(), Simplex::from([0])).containment_ok(&diagonal_02));
+    }
+
+    #[test]
+    fn common_links_in_special_position() {
+        // 0, 1, 2 on a line with 1 in the middle, 3 and 4 on either side:
+        // Z = ({0, 2}, {1}), and the edge 0-2 has link {3, 4}.
+        let z = Circuit::new(Simplex::from([0, 2]), Simplex::from([1]));
+        let t = set(&[&[0, 2, 3], &[0, 2, 4]]);
+        // The lower facets are the edges 1-2 and 0-1, which are not in t.
+        assert_eq!(z.common_link(&t), None);
+        assert!(!z.link_ok(&t, 3));
+        // The other way round: drop 1 from the support, leaving the edge
+        // 0-2, linked to 3 and 4 in t.
+        let w = z.negated();
+        assert_eq!(w.common_link(&t), Some(set(&[&[3], &[4]])));
+        assert!(w.link_ok(&t, 3));
+        // An empty negative side is never realised.
+        assert!(!Circuit::new(Simplex::from([0, 2]), Simplex::new()).link_ok(&t, 3));
+        // General position is vacuously fine.
+        assert!(Circuit::new(Simplex::from([0, 2]), Simplex::from([1, 3])).link_ok(&t, 3));
+    }
+
+    #[test]
+    fn circuits_of_a_square_with_a_collinear_point() {
+        // (0,0) (1,0) (0,1) (1,1) (1,2): 1, 3, 4 lie on x = 1.
+        let p = PointConfig::from_row_major(&[0, 0, 1, 0, 0, 1, 1, 1, 1, 2], 5, 2).unwrap();
+        let chi = p.chirotope().unwrap();
+        let found: Vec<(Vec<usize>, Vec<usize>)> = circuits(&chi)
+            .unwrap()
+            .iter()
+            .map(|z| (z.positive().to_vec(), z.negative().to_vec()))
+            .collect();
+        // As `points2circuits` prints them, up to order.
+        assert_eq!(
+            found,
+            vec![
+                (vec![0, 3], vec![1, 2]),
+                (vec![0, 4], vec![1, 2]),
+                (vec![0, 4], vec![2, 3]),
+                (vec![1, 4], vec![3]),
+            ]
+        );
     }
 }

@@ -9,8 +9,9 @@
 //!
 //! The classes below carry the full 0.3 API surface so that the shape of the
 //! package is fixed from the start. The configuration classes are real as of
-//! phase 1, and the placing and fine triangulations and the `Triangulation`
-//! class as of phase 2; the remaining methods are stubs that raise
+//! phase 1, the placing and fine triangulations and the `Triangulation`
+//! class as of phase 2, and flips and neighbours as of phase 3; the remaining
+//! methods are stubs that raise
 //! `NotImplementedError` until their phase lands. `python/tests/conftest.py`
 //! turns that exception into a skip, so the pytest suite lights up phase by
 //! phase without any test edits.
@@ -306,6 +307,13 @@ impl SharedConfig {
             Self::Vectors(c) => c.kind().noun(),
         }
     }
+
+    fn chirotope(&self) -> Result<Chirotope> {
+        match self {
+            Self::Points(c) => c.chirotope(),
+            Self::Vectors(c) => c.chirotope(),
+        }
+    }
 }
 
 /// An unlocked configuration of either kind, borrowed from its Python object.
@@ -425,37 +433,87 @@ impl Triangulation {
         self.inner.is_fine()
     }
 
-    fn flips(&self) -> PyResult<Vec<Flip>> {
-        todo("Triangulation.flips", 3)
+    /// Every bistellar flip of this triangulation, ordered by the simplices
+    /// each removes and then those it adds.
+    fn flips(&self, py: Python<'_>) -> PyResult<Vec<Flip>> {
+        let flips = py.detach(|| {
+            let chi = self.config.chirotope()?;
+            triang::flips(&chi, &self.inner)
+        })?;
+        flips
+            .into_iter()
+            .map(|f| {
+                let (n, rank) = (self.inner.n(), self.inner.rank());
+                Ok(Flip {
+                    config: self.config.clone(),
+                    pre: triang::Triangulation::new(n, rank, f.removed().clone())?,
+                    post: triang::Triangulation::new(n, rank, f.added().clone())?,
+                })
+            })
+            .collect()
     }
 
-    fn bistellar_flips(&self) -> PyResult<Vec<Flip>> {
-        self.flips()
+    /// The same as `flips`.
+    fn bistellar_flips(&self, py: Python<'_>) -> PyResult<Vec<Flip>> {
+        self.flips(py)
     }
 
-    fn neighbors(&self) -> PyResult<Vec<Triangulation>> {
-        todo("Triangulation.neighbors", 3)
+    /// Every triangulation one bistellar flip away from this one, in
+    /// canonical order.
+    fn neighbors(&self, py: Python<'_>) -> PyResult<Vec<Triangulation>> {
+        let neighbors = py.detach(|| {
+            let chi = self.config.chirotope()?;
+            triang::neighbors(&chi, &self.inner)
+        })?;
+        Ok(neighbors
+            .into_iter()
+            .map(|inner| Triangulation {
+                config: self.config.clone(),
+                inner,
+            })
+            .collect())
     }
 }
 
-/// A bistellar flip between two triangulations.
-#[pyclass(module = "triangulumancer")]
-pub struct Flip {}
+/// A bistellar flip of a triangulation: `pre` is the set of simplices it
+/// removes and `post` the set it adds. Neither is a triangulation of the whole
+/// configuration; they are the two triangulations of the region the flip
+/// changes.
+#[pyclass(module = "triangulumancer", frozen)]
+pub struct Flip {
+    config: SharedConfig,
+    pre: triang::Triangulation,
+    post: triang::Triangulation,
+}
 
 #[pymethods]
 impl Flip {
-    fn __repr__(&self) -> PyResult<String> {
-        todo("Flip.__repr__", 3)
+    fn __repr__(&self) -> String {
+        let noun = self.config.noun();
+        format!(
+            "A bistellar flip of a triangulation of a {}-dimensional {noun} configuration \
+             with {} {noun}s",
+            self.config.dim(),
+            self.config.len()
+        )
     }
 
+    /// The simplices the flip removes.
     #[getter]
-    fn pre(&self) -> PyResult<Triangulation> {
-        todo("Flip.pre", 3)
+    fn pre(&self) -> Triangulation {
+        Triangulation {
+            config: self.config.clone(),
+            inner: self.pre.clone(),
+        }
     }
 
+    /// The simplices the flip adds.
     #[getter]
-    fn post(&self) -> PyResult<Triangulation> {
-        todo("Flip.post", 3)
+    fn post(&self) -> Triangulation {
+        Triangulation {
+            config: self.config.clone(),
+            inner: self.post.clone(),
+        }
     }
 }
 

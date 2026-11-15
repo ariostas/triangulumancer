@@ -9,6 +9,10 @@
 //! Besides matching TOPCOM, the triangulations are recomputed from a chirotope
 //! *parsed from TOPCOM's text*, with no configuration anywhere: that is the
 //! `PLAN.md` section 6.1 boundary — the algorithms see nothing but signs.
+//!
+//! Phase 3 adds circuits (`points2circuits`) and flip sets (`points2flips`,
+//! fed the placing, fine and a few more triangulations as seeds), compared as
+//! full sets of `(removed side, added side)` pairs.
 
 mod common;
 
@@ -20,7 +24,7 @@ use triangulumancer::arith::Sign;
 use triangulumancer::config::{Config, Kind, Points, Vectors};
 use triangulumancer::om::{self, OrientedMatroid, check_basis};
 use triangulumancer::simplex::{Simplex, combinations};
-use triangulumancer::triang;
+use triangulumancer::triang::{self, Triangulation};
 
 /// A chirotope given as a table, read from TOPCOM's `n,r:signs` format.
 struct Table {
@@ -71,6 +75,63 @@ struct Tally {
     chirotopes: usize,
     bases: usize,
     simplices: usize,
+    circuit_sets: usize,
+    circuits: usize,
+    flip_sets: usize,
+    flips: usize,
+}
+
+/// A JSON list of `[positive, negative]` pairs of label lists.
+fn pairs(v: &Value) -> Vec<(Vec<usize>, Vec<usize>)> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            let side = |i: usize| -> Vec<usize> {
+                p[i].as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_u64().unwrap() as usize)
+                    .collect()
+            };
+            (side(0), side(1))
+        })
+        .collect()
+}
+
+fn circuits_and_flips(name: &str, chi: &impl OrientedMatroid, entry: &Value, tally: &mut Tally) {
+    if let Some(expected) = entry.get("circuits") {
+        let mut ours: Vec<_> = om::circuits(chi)
+            .unwrap()
+            .iter()
+            .map(|z| (z.positive().to_vec(), z.negative().to_vec()))
+            .collect();
+        ours.sort();
+        assert_eq!(ours, pairs(expected), "{name}: circuits");
+        tally.circuit_sets += 1;
+        tally.circuits += ours.len();
+    }
+    for record in entry["flips"].as_array().unwrap() {
+        let labels: Vec<i64> = simplex_list(&record["triangulation"])
+            .concat()
+            .iter()
+            .map(|&x| x as i64)
+            .collect();
+        let t = Triangulation::from_labels(chi.n(), chi.rank(), &labels, chi.rank()).unwrap();
+        assert_eq!(t.check(chi), Ok(()), "{name}: seed");
+        let reps = triang::flip::flip_reps(chi, &t, false).unwrap();
+        let ours: Vec<_> = reps
+            .iter()
+            .map(|r| (r.removed_side().to_vec(), r.added_side().to_vec()))
+            .collect();
+        assert_eq!(ours, pairs(&record["flips"]), "{name}: flips of {t:?}");
+        for rep in &reps {
+            let next = rep.expand(&t).apply(&t).unwrap();
+            assert_eq!(next.check(chi), Ok(()), "{name}: {rep:?} of {t:?}");
+        }
+        tally.flip_sets += 1;
+        tally.flips += ours.len();
+    }
 }
 
 fn check<K: Kind>(entry: &Value, tally: &mut Tally) {
@@ -88,6 +149,7 @@ fn check<K: Kind>(entry: &Value, tally: &mut Tally) {
     assert_eq!(placing.check(&chi), Ok(()), "{name}: placing");
     assert_eq!(fine.check(&chi), Ok(()), "{name}: fine");
     tally.simplices += placing.len() + fine.len();
+    circuits_and_flips(name, &chi, entry, tally);
 
     if let Some(expected) = entry["chirotope"].as_str() {
         let ours: String = om::to_topcom_string(&chi)
@@ -117,8 +179,10 @@ fn chirotope_placing_and_fine_match_topcom() {
         }
     }
     println!("{tally:?}");
-    assert_eq!(tally.entries, 306);
-    assert_eq!(tally.chirotopes, 300);
+    assert_eq!(tally.entries, 504);
+    assert_eq!(tally.chirotopes, 498);
+    assert_eq!(tally.circuit_sets, 464);
+    assert_eq!(tally.flip_sets, 1662);
 }
 
 /// Hand-checkable chirotopes, independent of both TOPCOM and `sign_of_det`.

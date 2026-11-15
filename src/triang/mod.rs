@@ -7,13 +7,16 @@
 //!
 //! * [`placing`] — the placing (pushing) triangulation.
 //! * [`fine`] — the placing triangulation with every unused point flipped in.
+//! * [`flip`] — bistellar flips: [`flips`], [`neighbors`].
 //! * [`Triangulation::check`] — whether a set of simplices is a triangulation.
 
 mod check;
 mod fine;
+pub mod flip;
 mod placing;
 
 pub use fine::fine;
+pub use flip::{Flip, FlipRep, flips, neighbors};
 pub use placing::placing;
 
 use crate::error::{Error, Result};

@@ -30,7 +30,9 @@ def test_placing_and_fine() -> None:
 
 
 def test_simplices_array() -> None:
-    vc = VectorConfiguration([[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]])
+    vc = VectorConfiguration(
+        [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]]
+    )
     t = vc.fine_triangulation()
     s = t.simplices
     assert s.dtype == np.int64
@@ -42,10 +44,16 @@ def test_simplices_array() -> None:
 
 def test_repr() -> None:
     t = interior_point_triangle().fine_triangulation()
-    assert repr(t) == "A triangulation with 3 simplices of a point configuration with 4 points"
+    assert (
+        repr(t)
+        == "A triangulation with 3 simplices of a point configuration with 4 points"
+    )
     vc = VectorConfiguration([[1, 0], [0, 1], [-1, -1]])
     t = vc.placing_triangulation()
-    assert repr(t) == "A triangulation with 3 simplices of a vector configuration with 3 vectors"
+    assert (
+        repr(t)
+        == "A triangulation with 3 simplices of a vector configuration with 3 vectors"
+    )
 
 
 def test_locking() -> None:
@@ -77,7 +85,7 @@ def test_direct_construction_validates() -> None:
         Triangulation(p, [[0, 1, 2]])
     with pytest.raises(ValueError, match="invalid triangulation"):
         Triangulation(p, [[0, 1, 2], [0, 1, 3]])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="dimension mismatch"):
         Triangulation(p, [[0, 1]])
     with pytest.raises(IndexError):
         Triangulation(p, [[0, 1, 4]])
@@ -91,7 +99,7 @@ def test_direct_construction_validates() -> None:
 
 def test_direct_construction_locks_only_on_success() -> None:
     p = PointConfiguration([[0, 0], [1, 0], [0, 1]])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="repeated"):
         Triangulation(p, [[0, 1, 1]])
     p.add_point([1, 1])
     Triangulation(p, [[0, 1, 2], [1, 2, 3]])
@@ -104,5 +112,5 @@ def test_direct_construction_of_vector_triangulations() -> None:
     t = Triangulation(vc, [[0, 1], [1, 2], [2, 3], [0, 3]])
     assert t.is_fine
     assert t.dim == 2
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="invalid triangulation"):
         Triangulation(vc, [[0, 1], [1, 2], [2, 3]])

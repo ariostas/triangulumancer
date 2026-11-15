@@ -10,22 +10,23 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phases 0–2 complete. **Phase 3 is next.**
+> ## ▶ Status: Phases 0–3 complete. **Phase 4 is next.**
 >
 > Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
 > integer configurations with exact rank and affine-hull reduction (`config`), bitset
 > simplices (`simplex`) — and, from Phase 2, the oriented-matroid layer (`om`: the
 > `OrientedMatroid` trait, a lazy `Chirotope`, `Circuit`), the `Symmetry` seam, and
-> `triang` (the `Triangulation` type with a full validity check, placing and fine).
-> Python ships `placing_triangulation`, `fine_triangulation` and a real `Triangulation`
-> class; flips, neighbours, the enumerations and the CGAL methods are still
-> `NotImplementedError` stubs. `regular/`, `om/cocircuit.rs` and `triang/flip*` in §4 do
-> not exist yet.
+> `triang` (the `Triangulation` type with a full validity check, placing and fine), and,
+> from Phase 3, circuits with TOPCOM's flip predicates and `triang::flip` (flip sets,
+> expansion, application). Python ships `placing_triangulation`, `fine_triangulation`, a
+> real `Triangulation` class, `flips`/`bistellar_flips`/`neighbors` and `Flip`; the
+> enumerations and the CGAL methods are still `NotImplementedError` stubs. `regular/`,
+> `om/cocircuit.rs`, `triang/flipgraph.rs` and `triang/extension/` in §4 do not exist yet.
 >
 > * **§7** — the phase table and what each phase ships.
 > * **§13** — what exists, what CI has verified, and **the Phase 1 and Phase 2 decisions
 >   later phases build on**.
-> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 3.
+> * **§14** — setup on a fresh machine, and the ordered first steps for Phase 4.
 >
 > *Finishing a phase means updating this banner and the table in §7, alongside §13.*
 
@@ -457,8 +458,8 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | 0 | Reference corpus and scaffolding | *(nothing user-visible)* | low | ✅ **done** |
 | 1 | Exact arithmetic and configuration core | the configuration classes | high | ✅ **done** |
 | 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ✅ **done** |
-| 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ▶ **next** |
-| 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ⬜ |
+| 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ✅ **done** |
+| 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ▶ **next** |
 | 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ⬜ |
 | 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ⬜ |
 | 7 | Parity, performance, release | the 0.4.0 release | low | ⬜ |
@@ -558,7 +559,7 @@ configuration in sight, which is the §6.1 boundary exercised. Beyond the brief,
 triangulations in the corpus and rejects all 77 871 corruptions of them (one simplex
 dropped, or one foreign simplex added). The Phase 2 decisions are in §13.
 
-### ▶ Phase 3 — Circuits, flips and neighbours — **NEXT** *(~750 LOC, medium–hard risk)*
+### ✅ Phase 3 — Circuits, flips and neighbours — **DONE** *(~700 lines of `src/` including docs and unit tests, medium–hard risk)*
 
 * `om::circuit`: `Circuit`, `containment_ok`, `link_ok` — in `om/`, not `triang/`, per §6.1.
 * `triang::flip`: `FlipRep`, naive (recompute-all) flip enumeration and application.
@@ -568,6 +569,18 @@ dropped, or one foreign simplex added). The Phase 2 decisions are in §13.
 entire degenerate-input correctness story, which our TOPCOM fork has already had to patch
 twice. **Mitigation:** the exhaustive `n ≤ 8, d ≤ 4` fixture sweep from Phase 0, comparing
 full flip sets rather than counts. Cross-check `om::circuit` against `points2circuits`.
+
+**Met.** `tests/fixture_flips.rs` matches `flips_of_placing` and `neighbors_of_placing` on
+all 31 corpus entries as full sets in canonical order — 65 flips and 65 neighbours, among
+them the 11 of `vc_degenerate_flip` — plus the 6 "not full rank" rejections; every
+neighbour passes `check`, and flipping back returns the placing triangulation.
+`tests/topcom.rs` grew to 504 configurations (the 306 of Phase 2 plus every full-rank 0/1
+configuration of the exhaustive tier — `n ≤ 8`, `d ≤ 4` — standing in for the 0.3
+exhaustive sweep, which was never generated) and checks 464 circuit sets (39 600 circuits)
+against `chiro2circuits`, and 1 662 flip sets (6 001 flips) against `points2flips` — of
+the placing and fine triangulations and up to three more per configuration, from TOPCOM's
+own flip-graph enumeration — with `check` on every one of the 6 001 neighbours. Nothing
+differed. The Phase 3 decisions are in §13.
 
 ### ⬜ Phase 4 — Flip-graph enumeration  *(~250 LOC, medium risk)*
 
@@ -758,7 +771,7 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0, 1 and 2 are complete; Phase 3 is next.** Nothing in phases 3–7 has been started.
+**Phases 0–3 are complete; Phase 4 is next.** Nothing in phases 4–7 has been started.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
@@ -766,9 +779,9 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 69 tests, plus the `#[ignore]`d 10⁶-matrix run |
-| Python | `pytest`: 16 pass, 8 skip, each skip naming its phase |
-| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 306 configurations, 25 KiB, TOPCOM's own CLI tools |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 78 tests, plus the `#[ignore]`d 10⁶-matrix run |
+| Python | `pytest`: 20 pass, 7 skip, each skip naming its phase |
+| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, 180 KiB, TOPCOM's own CLI tools |
 
 ### What exists in `src/`
 
@@ -781,21 +794,23 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `simplex.rs` | `Simplex` (bitset), `SimplexSet` (canonically ordered set of simplices), `combinations` (lex-order `k`-subsets) |
 | `om/mod.rs` | the `OrientedMatroid` trait; `check_basis`; `to_topcom_string` (`points2chiro` format) |
 | `om/chirotope.rs` | `Chirotope`, lazy and memoised; `Config::chirotope()` |
-| `om/circuit.rs` | `Circuit` with TOPCOM's orientation, `upper_facets`/`lower_facets` |
+| `om/circuit.rs` | `Circuit` with TOPCOM's orientation, `upper_facets`/`lower_facets`, `containment_ok`, `link_ok`, `common_link`; `circuits(om)` |
 | `symmetry.rs` | `Symmetry`, `TrivialGroup` — as §6.2, verbatim |
 | `triang/mod.rs`, `triang/check.rs` | `Triangulation`; `check`, the port of TOPCOM's `CheckTriang` |
 | `triang/placing.rs`, `triang/fine.rs` | `triang::placing`, `triang::fine` |
-| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation`; flips, neighbours, enumerations, CGAL methods and `Flip` still `todo()` stubs |
+| `triang/flip.rs` | `FlipRep`, `Flip`, `flip_reps` (naive), `flips`, `neighbors` |
+| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`, `Flip`; enumerations and CGAL methods still `todo()` stubs |
 
-`regular/`, `om/cocircuit.rs` and `triang/{flip,flipgraph,extension}` from §4 do not exist
+`regular/`, `om/cocircuit.rs` and `triang/{flipgraph,extension}` from §4 do not exist
 yet.
 
 Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s),
 `tests/fixture_rank.rs` (rank against the corpus, and the B4 hulls),
 `tests/fixture_triang.rs` (placing and fine against the corpus; `check` over every corpus
-triangulation and its corruptions) and `tests/topcom.rs` (chirotope, placing and fine
-against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
+triangulation and its corruptions), `tests/fixture_flips.rs` (flips and neighbours of
+placing against the corpus) and `tests/topcom.rs` (chirotope, placing, fine, circuits and
+flip sets against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
 it with `mod common;`.
 
 ### Phase 1 decisions later phases depend on
@@ -983,6 +998,61 @@ zero columns (zero vectors are covered by unit tests instead). Extending it with
 `points2circuits`, `points2flips` and `points2ntriangs` is the cheapest strong oracle for
 Phases 3–5.
 
+### Phase 3 decisions later phases depend on
+
+**Circuits (`om::circuit`).**
+
+* `containment_ok`, `link_ok` and `common_link` are methods on `Circuit` that take a
+  `&SimplexSet`, not a `Triangulation` — `om` must not depend on `triang`. `link_ok` takes
+  the rank because TOPCOM's returns true for a general-position circuit; the flip code only
+  calls it in special position, so that early return is reproduced, not relied on.
+  `common_link` returns the link it checked, so expanding a flip does not recompute it.
+* `om::circuits(om)` is TOPCOM's `Circuits`: every `(rank + 1)`-subset, one circuit per
+  support, ordered by support. The reference is **`chiro2circuits`, not
+  `points2circuits`**: given points, this TOPCOM revision enumerates circuits with a
+  subset-graph search whose output is oriented and labelled differently (it is not a
+  relabelling we could undo cheaply), while `chiro2circuits` uses the same
+  `Circuit(chiro, dependent_set)` the flip code does. Phase 5's `Admissibles` should be
+  checked against `chiro2circuits` too.
+
+**Flips (`triang::flip`).**
+
+* `FlipRep { removed, added }` is TOPCOM's `(first, second)`: the circuit oriented so that
+  the removed side's facets are present. Constructing one guarantees both sides non-empty,
+  so `kills_vertex`/`adds_vertex`/`is_balanced` are TOPCOM's. `FlipRep` is independent of
+  the triangulation; `FlipRep::expand(&t)` gives `Flip { removed, added, rep }` (the
+  simplices), and `Flip::apply(&t)` the neighbour.
+* `flip_reps(om, t, forbid_vertex_removal) -> BTreeSet<FlipRep>` recomputes the whole set
+  from TOPCOM's candidate sets — `S ∪ {v}` for unused `v`, and `S ∪ S'` for facet-adjacent
+  simplices — but finds adjacent pairs through a facet → simplices map rather than
+  TOPCOM's `O(|T|²)` scan (its `count > rank` early break never fires on a triangulation, so
+  the candidates are the same). Candidates are deduplicated before the circuit is built.
+  This is the oracle **Phase 7's incremental `TriangFlips`** must agree with; it takes the
+  same `forbid_vertex_removal` flag Phase 4 needs, and a restriction set would be the
+  natural extension.
+* Every flip of every triangulation in the tests is applied and the result `check`ed; no
+  TOPCOM flip has produced an invalid triangulation, including the special-position ones.
+  `FlipRep::expand` against a triangulation the flip does not belong to is well-formed but
+  meaningless, and Python never does it.
+* Order: `flips()` is sorted by `(removed, added)` simplex lists — exactly how the fixtures
+  sort `pre`/`post` — and `neighbors()` canonically. `flip_reps` is ordered by
+  `(removed side, added side)`, which also fixes the BFS order in Phase 4.
+
+**Python.** `Flip` is a frozen pyclass `{ config: SharedConfig, pre, post }` whose getters
+wrap new `Triangulation`s (unchecked, partial). `flips`/`neighbors` build a chirotope per
+call and run with the GIL released. `Triangulation.flips()` on a triangulation built with
+`validate=False` is whatever TOPCOM's predicates make of it — no panic, no promise.
+
+**Fixtures.** `gen_topcom_fixtures.py` now also needs `chiro2circuits`, `points2flips`,
+`points2ntriangs`, `points2nfinetriangs` and `points2triangs` (the last three for Phase 4;
+recorded now so the file is generated once). Those link `ComputeTriangs.cc`, which pulls in
+cddlib's headers through `RegularityCheck.hh`; the docstring describes a stub header that
+avoids cddlib, since regularity is never requested. Each TOPCOM process runs under a 1 GiB
+address-space cap and enumerations under a 20 s timeout (`null` when either is hit) —
+**a parallel run without the cap exhausted a 13 GB machine**. Configurations with
+`n == rank` are skipped by the enumeration tools, which fail outright on them. Generation
+takes about 5 minutes on 4 cores.
+
 ### Verified vs not
 
 Verified locally on macOS arm64, Python 3.14: both cargo feature sets build, clippy is clean
@@ -999,6 +1069,11 @@ Phase 2 was verified locally on Linux x86_64, Python 3.13: `cargo test` (69 test
 clippy with `-D warnings` and `cargo doc` with `-D warnings` on both feature sets,
 `cargo fmt --check`, `prek -a`, and pytest (16 pass, 8 skip). It has not been through CI
 either; it adds nothing platform-specific.
+
+Phase 3 was verified the same way: `cargo test` (78 tests), clippy and `cargo doc` with
+`-D warnings` on both feature sets, `cargo fmt --check`, `prek -a` (which also needed
+three pre-existing `PT011`/formatting fixes in `test_triangulation_api.py`), and pytest
+(20 pass, 7 skip).
 
 **Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
@@ -1108,31 +1183,18 @@ regenerating to do any of phases 1–7.
 
 Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
 
-### Starting Phase 3
+### Starting Phase 4
 
-Phases 1 and 2 are done (recorded in §7, decisions in §13). For Phase 3, in order:
+Phases 1–3 are done (recorded in §7, decisions in §13). For Phase 4:
 
-1. Extend `scripts/gen_topcom_fixtures.py` with `points2circuits` and `points2flips`, and
-   build those two binaries the same way (the recipe is in the script's docstring; the
-   TOPCOM checkout is the one from "The upstream sources you will need" above). The core
-   corpus has `flips_of_placing` and `neighbors_of_placing` for 31 configurations;
-   TOPCOM's own tools give hundreds more, including degenerate ones of the kind that broke
-   the fork twice.
-2. `src/om/circuit.rs` — `containment_ok` and `link_ok` (`lib-src/TriangNode.cc:20-76`;
-   [`TOPCOM.md` §2.5](TOPCOM.md)), next to the `Circuit` that already exists; and a
-   `circuits(om)` iterator (TOPCOM's `Circuits`, lex order over `(rank + 1)`-sets) checked
-   against `points2circuits`.
-3. `src/triang/flip.rs` — `FlipRep` enumeration for a `Triangulation`
-   ([`TOPCOM.md` §5.1](TOPCOM.md)), the expanded flip (`Flip.cc:65-115`), and applying one
-   to get a neighbour. Naive recompute-all is the plan; incremental `TriangFlips` is
-   Phase 7. Assert `Triangulation::check` on every neighbour in the tests.
-4. `src/python.rs` — a `Flip` pyclass whose `pre`/`post` are `Triangulation`s sharing the
-   `SharedConfig`, built with `triang::Triangulation::new` and **not** checked (they are
-   partial), `__repr__` from `git show legacy-cpp:src/triangulumancer/Flip.cpp`; then
-   `flips`, `bistellar_flips` and `neighbors`.
-
-Phase 3 is done when `flips_of_placing` and `neighbors_of_placing` match the corpus (as
-sets, in canonical order) and the circuits match `points2circuits`.
+1. `src/triang/flipgraph.rs` — BFS over `flip_reps`/`expand`/`apply` with one visited
+   `HashSet<Triangulation>`, as an iterator (§5.4), generic over `Symmetry`.
+2. Seed with `fine` when `only_fine`, pass `forbid_vertex_removal = only_fine`, and yield
+   nothing when the fine seed is not fine (B1; §13, Phase 2 decisions).
+3. Python `all_connected_triangulations` and a streaming `iter_all_connected_triangulations`.
+4. Tests: the corpus as sets (respecting `untrusted`), the B1 values in
+   `KNOWN_DIVERGENT.md`, and `n_connected`/`n_connected_fine`/`connected` in
+   `topcom.json.gz` (the fine count is not comparable where `fine_seed_not_fine`).
 
 ### A warning about the `__repr__` strings
 

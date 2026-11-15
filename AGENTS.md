@@ -70,8 +70,9 @@ virtualenv and records the output of every public method over a corpus of
 configurations.
 
 A second fixture file, `tests/fixtures/topcom.json.gz`, records TOPCOM's own
-command-line tools (`points2chiro`, `points2placingtriang`, `points2finetriang`)
-over a few hundred seeded random configurations. It needs TOPCOM binaries built
+command-line tools (chirotopes, placing and fine triangulations, circuits, flip
+sets and flip-graph enumerations) over a few hundred seeded random configurations
+and the full-rank 0/1 configurations with `n <= 8`, `d <= 4`. It needs TOPCOM binaries built
 from the pinned checkout; `scripts/gen_topcom_fixtures.py` documents how. It
 has no known-bug markings: none of B1–B5 reaches those tools.
 

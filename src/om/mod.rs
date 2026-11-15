@@ -16,7 +16,7 @@ mod chirotope;
 mod circuit;
 
 pub use chirotope::Chirotope;
-pub use circuit::Circuit;
+pub use circuit::{Circuit, circuits};
 
 use crate::arith::Sign;
 use crate::error::{Error, Result};
