@@ -1,0 +1,95 @@
+# Working in this repository
+
+## What this is
+
+`triangulumancer` computes triangulations of point and vector configurations.
+It is being rewritten from C++ (CGAL + TOPCOM behind pybind11) to pure Rust with
+PyO3 bindings. **Read `PLAN.md` before making changes** — it defines the phases,
+the architecture, and the decisions that have already been made.
+
+**Start with the status banner at the top of `PLAN.md`**: it says which phase is
+done and which is next. The migration runs over eight phases, so most of what the
+plan describes does not exist yet — the module tree in its section 4 is the
+target, not the current state. Section 7 has the phase table; section 13 has the
+detail. When you finish a phase, update the banner and that table.
+
+The two companion documents are design input, produced by reading the upstream
+sources, and should be treated as the reference for the algorithms:
+
+* `CGAL.md` — regular and Delaunay triangulations.
+* `TOPCOM.md` — placing and fine triangulations, flips, and the two enumerations.
+
+## Layout
+
+```
+src/            the Rust crate; algorithms are plain Rust, bindings are feature-gated
+  python.rs     PyO3 translation layer only — no logic here
+python/         the Python package and its tests
+scripts/        development tooling (fixture generation)
+tests/fixtures/ reference outputs from the C++ oracle
+```
+
+The layering in `src/` is load-bearing (`PLAN.md` section 6): combinatorial
+algorithms take an oriented matroid, never a configuration. Do not reach past
+that boundary for convenience — it is what keeps the rest of TOPCOM's
+functionality cheap to add later.
+
+## Commands
+
+```bash
+cargo test                                    # Rust tests
+cargo clippy --all-targets -- -D warnings     # and again with --features python
+cargo fmt
+prek -a --quiet                               # all linters (not `pre-commit run -a`)
+
+uv venv .venv-dev && VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
+.venv-dev/bin/python -m pytest                # Python tests
+
+python scripts/gen_fixtures.py --list         # inspect the fixture corpus
+python scripts/gen_fixtures.py                # regenerate it (needs network + uv)
+python scripts/gen_topcom_fixtures.py --topcom-bin DIR   # TOPCOM-CLI fixtures (see its docstring)
+```
+
+## Conventions
+
+* Rust is the implementation language. `python.rs` converts types and nothing else.
+* Every error is a variant of `crate::Error`, mapped to a Python exception at the
+  boundary. Nothing panics on bad user input, and nothing calls `process::exit`.
+* Public enums are `#[non_exhaustive]`.
+* Output ordering is canonical and deterministic: simplices sorted internally,
+  then sorted between themselves. Tests depend on this.
+* Every Python method is implemented. During the migration, methods for phases
+  that had not landed raised `NotImplementedError` and a pytest hook turned that
+  into a skip; both are gone, so a `NotImplementedError` is now a plain failure
+  and the suite runs with no skips beyond platform-specific ones.
+
+## Testing against the C++ oracle
+
+The reference implementation is the published `triangulumancer==0.3.0` wheel, not
+anything in this tree. `scripts/gen_fixtures.py` installs it into a throwaway
+virtualenv and records the output of every public method over a corpus of
+configurations.
+
+A second fixture file, `tests/fixtures/topcom.json.gz`, records TOPCOM's own
+command-line tools (chirotopes, placing and fine triangulations, circuits, flip
+sets and flip-graph enumerations) over a few hundred seeded random configurations
+and the full-rank 0/1 configurations with `n <= 8`, `d <= 4`. It needs TOPCOM binaries built
+from the pinned checkout; `scripts/gen_topcom_fixtures.py` documents how. It
+has no known-bug markings: none of B1–B5 reaches those tools.
+
+The oracle has known bugs that are deliberately not fixed (`PLAN.md` section 3).
+Affected results are listed per entry under `untrusted` in the fixture data, and
+must **not** be asserted against — neither equality nor inequality. Asserting
+inequality would be tempting, but a broken computation can still land on the
+right answer by luck, and a test that fails for a correct implementation is worse
+than no test.
+
+Where the correct value is independently known it is written down in
+`tests/fixtures/KNOWN_DIVERGENT.md` as a positive assertion instead. Those are
+the real acceptance criteria for the phases that fix each bug — read that file
+before writing tests against the corpus.
+
+## Commits
+
+Conventional commits, with an `Assisted-by:` trailer when applicable. No
+`Co-authored-by`.

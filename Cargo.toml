@@ -1,0 +1,98 @@
+[package]
+name = "triangulumancer"
+version = "0.4.0-dev"
+description = "Triangulations of point and vector configurations: regular, Delaunay, placing and fine triangulations, bistellar flips, and enumeration."
+authors = ["Andres Rios Tascon"]
+edition = "2024"
+# Edition 2024 requires 1.85, and the library needs nothing newer (CI checks it,
+# with every feature). The dev-dependencies may: criterion 0.8 needs 1.86.
+rust-version = "1.85"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/ariostas/triangulumancer"
+documentation = "https://docs.rs/triangulumancer"
+readme = "README.md"
+keywords = ["triangulation", "delaunay", "polytope", "geometry", "combinatorics"]
+categories = ["science", "mathematics", "algorithms"]
+# A whitelist, so the design documents, the Python package, CI and tooling stay
+# out of the crate. The tests and their fixtures (about 270 KiB compressed) are
+# shipped, so that `cargo test` works from the published source; the benchmarks
+# are not, and cargo drops their targets from the packaged manifest.
+include = [
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/docs-header.html",
+    "/src",
+    "/tests/*.rs",
+    "/tests/common",
+    "/tests/fixtures/core.json.gz",
+    "/tests/fixtures/topcom.json.gz",
+]
+
+[lib]
+name = "triangulumancer"
+crate-type = ["lib", "cdylib"]
+
+[features]
+default = []
+# The Python bindings, i.e. the `python` module. Only the extension module built by
+# maturin needs them (see `[tool.maturin]` in pyproject.toml), so plain Rust builds
+# do not have to compile pyo3.
+python = ["dep:pyo3", "dep:numpy"]
+# Internal, not part of the public API: expensive self-checks (the full validity
+# check of the regular triangulation after every insertion, and the incremental
+# flip sets checked against the naive ones), active only in builds with debug
+# assertions. This repository's own tests enable it through the
+# self-dev-dependency below; dependents' debug builds do not pay for it.
+self-check = []
+# Reserved, not implemented. Regularity checking is the one piece of future TOPCOM
+# functionality that would need a solver (PLAN.md section 6.3); naming the slot now
+# means adding it later never forces an LP dependency on library users who do not
+# want it.
+# lp = ["dep:good_lp"]
+
+[dependencies]
+# Arbitrary-precision integers: the last tier of the exact determinant-sign stack
+# (`arith`), and the Hermite normal form of the affine-hull reduction
+# (`config::hull`). Pure Rust, MIT/Apache-2.0. See PLAN.md section 5.1.
+dashu-int = "0.6"
+
+[dependencies.pyo3]
+version = "0.29"
+features = ["abi3-py310"]
+optional = true
+
+[dependencies.numpy]
+version = "0.29"
+optional = true
+
+[dev-dependencies]
+# The crate itself, for the internal `self-check` feature in tests. Path-only, so
+# `cargo publish` drops it from the published manifest.
+triangulumancer = { path = ".", features = ["self-check"] }
+# Reading the gzipped JSON fixture corpus in the integration tests.
+flate2 = "1"
+serde_json = "1"
+# Benchmarks (`benches/`).
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "arith"
+harness = false
+
+[[bench]]
+name = "triang"
+harness = false
+
+[[bench]]
+name = "regular"
+harness = false
+
+[package.metadata.docs.rs]
+# KaTeX, for the maths in the documentation. Locally:
+#   RUSTDOCFLAGS="--html-in-header docs-header.html" cargo doc --no-deps
+rustdoc-args = ["--html-in-header", "./docs-header.html"]
+# Nothing is platform-specific, so one target is enough.
+targets = ["x86_64-unknown-linux-gnu"]

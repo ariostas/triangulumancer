@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+*.pyd
+*.dylib
 
 # Distribution / packaging
 .Python
@@ -67,3 +69,13 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Development virtualenvs
+.venv-dev/
+
+# Generated on demand, not committed: see scripts/gen_fixtures.py
+/tests/fixtures/exhaustive.json.gz
