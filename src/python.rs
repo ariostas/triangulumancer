@@ -10,12 +10,12 @@
 //! The classes below carry the full 0.3 API surface so that the shape of the
 //! package is fixed from the start. The configuration classes are real as of
 //! phase 1, the placing and fine triangulations and the `Triangulation`
-//! class as of phase 2, flips and neighbours as of phase 3, and the flip-graph
-//! enumeration as of phase 4; the remaining
-//! methods are stubs that raise
-//! `NotImplementedError` until their phase lands. `python/tests/conftest.py`
-//! turns that exception into a skip, so the pytest suite lights up phase by
-//! phase without any test edits.
+//! class as of phase 2, flips and neighbours as of phase 3, the flip-graph
+//! enumeration as of phase 4, the regular triangulations as of phase 6 and
+//! the extension-graph enumeration as of phase 5, which completes the 0.3
+//! surface. Methods for phases that have not landed raise
+//! `NotImplementedError` through [`todo`]; `python/tests/conftest.py` turns
+//! that exception into a skip. None is left.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -33,7 +33,6 @@ use crate::config::{Config, Kind, Lockable, PointConfig, Points, Vectors};
 use crate::error::{Error, Result};
 use crate::om::Chirotope;
 use crate::regular::{self, Scalar};
-use crate::symmetry::TrivialGroup;
 use crate::triang;
 
 impl From<Error> for PyErr {
@@ -57,6 +56,10 @@ impl From<Error> for PyErr {
 }
 
 /// Raise `NotImplementedError` naming the phase that will implement `what`.
+///
+/// Unused since phase 5 completed the 0.3 surface; kept for bindings that
+/// land ahead of their implementation.
+#[allow(dead_code)]
 fn todo<T>(what: &str, phase: u8) -> PyResult<T> {
     Err(PyNotImplementedError::new_err(format!(
         "{what} is not implemented yet; it lands in phase {phase} of the Rust \
@@ -170,7 +173,56 @@ where
     })?;
     Ok(TriangulationIterator {
         config: config.lock().into(),
-        search: Mutex::new(graph),
+        search: Mutex::new(Box::new(graph)),
+    })
+}
+
+/// `all_triangulations`, with the GIL released while it runs; locks the
+/// configuration on success.
+fn all<K: Kind>(
+    py: Python<'_>,
+    config: &mut Lockable<K>,
+    only_fine: bool,
+) -> PyResult<Vec<Triangulation>>
+where
+    SharedConfig: From<Arc<Config<K>>>,
+{
+    let frozen = config.get();
+    let all = py.detach(|| {
+        frozen
+            .chirotope()
+            .and_then(|c| triang::all_triangulations(&c, only_fine))
+    })?;
+    let shared: SharedConfig = config.lock().into();
+    Ok(all
+        .into_iter()
+        .map(|inner| Triangulation {
+            config: shared.clone(),
+            inner,
+        })
+        .collect())
+}
+
+/// `iter_all_triangulations`: the tables are built here, so that a
+/// rank-deficient configuration fails at the call, and the configuration is
+/// locked once that succeeds.
+fn all_iter<K: Kind>(
+    py: Python<'_>,
+    config: &mut Lockable<K>,
+    only_fine: bool,
+) -> PyResult<TriangulationIterator>
+where
+    SharedConfig: From<Arc<Config<K>>>,
+{
+    let frozen = config.get();
+    let graph = py.detach(|| {
+        frozen
+            .chirotope()
+            .and_then(|c| triang::ExtensionGraph::new(&c, only_fine))
+    })?;
+    Ok(TriangulationIterator {
+        config: config.lock().into(),
+        search: Mutex::new(Box::new(graph.map(Ok))),
     })
 }
 
@@ -317,10 +369,36 @@ impl PointConfiguration {
         connected_iter(py, &mut self.inner, only_fine)
     }
 
+    /// Every triangulation, connected to the others by flips or not, in
+    /// canonical order; with `only_fine`, every fine one.
+    ///
+    /// A backtracking search over partial triangulations (TOPCOM's extension
+    /// graph). With `only_fine` it only ever uses simplices that contain no
+    /// other point, so it finds exactly the fine triangulations; with
+    /// repeated points or zero vectors there are none and the result is
+    /// empty.
     #[pyo3(signature = (only_fine = false))]
-    fn all_triangulations(&self, only_fine: bool) -> PyResult<Vec<Triangulation>> {
-        let _ = only_fine;
-        todo("PointConfiguration.all_triangulations", 5)
+    fn all_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<Vec<Triangulation>> {
+        all(py, &mut self.inner, only_fine)
+    }
+
+    /// As `all_triangulations`, but yielding the triangulations one at a
+    /// time, in the order the search finds them, without holding them.
+    ///
+    /// The search needs memory for its tables, quadratic in the number of
+    /// possible simplices, but none for the triangulations: counting or
+    /// filtering an enumeration of any size takes constant memory.
+    #[pyo3(signature = (only_fine = false))]
+    fn iter_all_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<TriangulationIterator> {
+        all_iter(py, &mut self.inner, only_fine)
     }
 
     fn delaunay_triangulation(&mut self, py: Python<'_>) -> PyResult<Triangulation> {
@@ -443,10 +521,36 @@ impl VectorConfiguration {
         connected_iter(py, &mut self.inner, only_fine)
     }
 
+    /// Every triangulation, connected to the others by flips or not, in
+    /// canonical order; with `only_fine`, every fine one.
+    ///
+    /// A backtracking search over partial triangulations (TOPCOM's extension
+    /// graph). With `only_fine` it only ever uses simplices that contain no
+    /// other point, so it finds exactly the fine triangulations; with
+    /// repeated points or zero vectors there are none and the result is
+    /// empty.
     #[pyo3(signature = (only_fine = false))]
-    fn all_triangulations(&self, only_fine: bool) -> PyResult<Vec<Triangulation>> {
-        let _ = only_fine;
-        todo("VectorConfiguration.all_triangulations", 5)
+    fn all_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<Vec<Triangulation>> {
+        all(py, &mut self.inner, only_fine)
+    }
+
+    /// As `all_triangulations`, but yielding the triangulations one at a
+    /// time, in the order the search finds them, without holding them.
+    ///
+    /// The search needs memory for its tables, quadratic in the number of
+    /// possible simplices, but none for the triangulations: counting or
+    /// filtering an enumeration of any size takes constant memory.
+    #[pyo3(signature = (only_fine = false))]
+    fn iter_all_triangulations(
+        &mut self,
+        py: Python<'_>,
+        only_fine: bool,
+    ) -> PyResult<TriangulationIterator> {
+        all_iter(py, &mut self.inner, only_fine)
     }
 }
 
@@ -738,8 +842,9 @@ impl Flip {
     }
 }
 
-/// An iterator over the triangulations of a flip-graph search, returned by
-/// `iter_all_connected_triangulations`.
+/// An iterator over the triangulations of an enumeration, returned by
+/// `iter_all_connected_triangulations` (a flip-graph search) and
+/// `iter_all_triangulations` (an extension-graph search).
 ///
 /// Each `next` runs the search with the GIL released until it finds the next
 /// triangulation. The search state is behind a mutex, so the iterator can be
@@ -747,8 +852,11 @@ impl Flip {
 #[pyclass(module = "triangulumancer", frozen)]
 pub struct TriangulationIterator {
     config: SharedConfig,
-    search: Mutex<triang::FlipGraph<Chirotope, TrivialGroup>>,
+    search: Mutex<Search>,
 }
+
+/// The search behind a [`TriangulationIterator`].
+type Search = Box<dyn Iterator<Item = Result<triang::Triangulation>> + Send>;
 
 #[pymethods]
 impl TriangulationIterator {
@@ -761,7 +869,7 @@ impl TriangulationIterator {
             let mut search = self
                 .search
                 .lock()
-                .map_err(|_| Error::Internal("flip-graph iterator lock poisoned"))?;
+                .map_err(|_| Error::Internal("triangulation iterator lock poisoned"))?;
             search.next().transpose()
         })?;
         Ok(next.map(|inner| Triangulation {

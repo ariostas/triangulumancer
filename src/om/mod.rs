@@ -14,9 +14,11 @@
 
 mod chirotope;
 mod circuit;
+mod cocircuit;
 
 pub use chirotope::Chirotope;
 pub use circuit::{Circuit, circuits};
+pub use cocircuit::{Cocircuit, Facets, Incidence, Incidences, cocircuits};
 
 use crate::arith::Sign;
 use crate::error::{Error, Result};

@@ -20,7 +20,14 @@ TOPCOM directly, which buys two things the main corpus cannot:
   and of up to three more triangulations per configuration, fed to it as
   seeds (phase 3);
 * **flip-graph counts and sets**, from ``points2ntriangs`` /
-  ``points2nfinetriangs`` and ``points2triangs`` (phase 4).
+  ``points2nfinetriangs`` and ``points2triangs`` (phase 4);
+* **extension-graph counts and sets** — every triangulation, connected or
+  not — from ``points2nalltriangs`` / ``points2nallfinetriangs`` and
+  ``points2alltriangs`` / ``points2allfinetriangs`` (phase 5), and the tables
+  that search is built on: **cocircuits**, from ``chiro2cocircuits`` (like
+  circuits, from the chirotope), and **facets**, from ``points2facets``, which
+  finds them from the boundary of the placing triangulation rather than from
+  the cocircuits.
 
 Besides the named and random configurations, every full-rank 0/1
 configuration of ``gen_fixtures.py``'s exhaustive tier (``n <= 8`` points in
@@ -46,7 +53,9 @@ directory builds them::
     OBJS=$(notdir $(SRCS:.cc=.o))
     vpath %.cc $(T)/lib-src $(T)/src
     all: points2chiro points2placingtriang points2finetriang chiro2circuits \\
-      points2flips points2ntriangs points2nfinetriangs points2triangs
+      points2flips points2ntriangs points2nfinetriangs points2triangs \\
+      points2nalltriangs points2nallfinetriangs points2alltriangs \\
+      points2allfinetriangs chiro2cocircuits points2facets
     %.o: %.cc
     	g++ $(CXXFLAGS) -c $< -o $@
     points2%: points2%.o $(OBJS)
@@ -70,7 +79,7 @@ configuration here is full rank with no zero column. Simplices are stored in
 canonical order (sorted within, then between), as in the main corpus; flips
 as ``[removed_side, added_side]`` pairs of TOPCOM's ``FlipRep``, sorted.
 
-The flip-graph enumerations run with a timeout (``--enum-timeout``) and every
+The enumerations run with a timeout (``--enum-timeout``) and every
 TOPCOM process under a ``MEMORY_LIMIT`` address-space cap; a count that did
 not finish is recorded as ``null``. The full set of triangulations is
 recorded only when there are at most ``MAX_TRIANG_SET`` of them.
@@ -80,6 +89,12 @@ which is not fine when there are duplicate points (``PLAN.md`` section 13,
 phase 2 decisions); its count is then that of a walk from a non-fine seed
 with vertex removal forbidden, which is not the number of fine
 triangulations. Such entries carry ``"fine_seed_not_fine": true``.
+``points2nallfinetriangs`` has no seed and is the number of fine
+triangulations in every case (zero when there are duplicates).
+
+``--only-extension`` adds or refreshes just the phase 5 fields (``n_all``,
+``n_all_fine``, ``all``, ``all_fine``, ``cocircuits``, ``facets``) of the
+existing fixture, leaving every other field as it is.
 """
 
 from __future__ import annotations
@@ -108,7 +123,8 @@ TOPCOM_REV = "a4333293e9c3cbcf5b8420b89ee30f51078d47fc"
 MAX_CHIRO_BASES = 800
 # Circuits are recorded only up to this many (rank + 1)-subsets.
 MAX_CIRCUIT_SETS = 3000
-# Whole flip-graph components are recorded only up to this many triangulations.
+# Whole flip-graph components and extension-graph results are recorded only up to
+# this many triangulations.
 MAX_TRIANG_SET = 40
 # Flips of this many triangulations besides placing and fine, from the component.
 EXTRA_FLIP_SEEDS = 3
@@ -295,6 +311,8 @@ def evaluate(case: dict[str, Any], bin_dir: Path, enum_timeout: int) -> None:
         chiro = run(bin_dir / "points2chiro", cols)
         case["circuits"] = parse_pairs(run_text(bin_dir / "chiro2circuits", chiro))
 
+    evaluate_extension(case, bin_dir, enum_timeout)
+
     count = run_or_none(bin_dir / "points2ntriangs", cols, enum_timeout)
     case["n_connected"] = None if count is None else int(count.split()[-1])
     count = run_or_none(bin_dir / "points2nfinetriangs", cols, enum_timeout)
@@ -316,6 +334,25 @@ def evaluate(case: dict[str, Any], bin_dir: Path, enum_timeout: int) -> None:
     ]
 
 
+def evaluate_extension(case: dict[str, Any], bin_dir: Path, enum_timeout: int) -> None:
+    """The extension-graph enumerations and tables, recorded in `case`."""
+    cols = columns(case["kind"], case["matrix"])
+    n, r = len(cols), len(cols[0])
+    case["facets"] = parse_triangulation(run(bin_dir / "points2facets", cols))
+    if comb(n, r - 1) <= MAX_CIRCUIT_SETS:
+        chiro = run(bin_dir / "points2chiro", cols)
+        case["cocircuits"] = parse_pairs(run_text(bin_dir / "chiro2cocircuits", chiro))
+    if n == r:
+        # A single simplex; the enumeration tools fail on it, as above.
+        case["n_all"] = case["n_all_fine"] = None
+        return
+    for field, tool in [("all", "alltriangs"), ("all_fine", "allfinetriangs")]:
+        count = run_or_none(bin_dir / f"points2n{tool}", cols, enum_timeout)
+        case[f"n_{field}"] = None if count is None else int(count.split()[-1])
+        if count is not None and case[f"n_{field}"] <= MAX_TRIANG_SET:
+            case[field] = parse_triangulations(run(bin_dir / f"points2{tool}", cols))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--topcom-bin", type=Path, required=True)
@@ -328,7 +365,29 @@ def main() -> int:
         help="seconds per flip-graph enumeration",
     )
     parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument(
+        "--only-extension",
+        action="store_true",
+        help="only add the extension-graph fields to the existing fixture",
+    )
     args = parser.parse_args()
+
+    if args.only_extension:
+        with gzip.open(FIXTURE, "rt", encoding="utf-8") as fh:
+            payload = json.load(fh)
+        cases = payload["entries"]
+        with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
+            list(
+                pool.map(
+                    lambda c: evaluate_extension(c, args.topcom_bin, args.enum_timeout),
+                    cases,
+                )
+            )
+        with gzip.open(FIXTURE, "wt", encoding="utf-8") as fh:
+            json.dump(payload, fh, separators=(",", ":"), sort_keys=True)
+        n_all = sum(c["n_all"] is not None for c in cases)
+        print(f"{n_all} extension-graph counts -> {FIXTURE}", file=sys.stderr)
+        return 0
 
     rng = random.Random(args.seed)
     cases = named_cases()

@@ -61,6 +61,7 @@ python scripts/gen_topcom_fixtures.py --topcom-bin DIR   # TOPCOM-CLI fixtures (
 * Methods for phases that have not landed raise `NotImplementedError` via the
   `todo()` helper in `src/python.rs`. `python/tests/conftest.py` turns that into
   a skip, so the pytest suite lights up phase by phase with no test edits.
+  Since phase 5 no stub is left, and the suite should run with no skips.
 
 ## Testing against the C++ oracle
 

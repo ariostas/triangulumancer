@@ -10,14 +10,18 @@
 //! * [`flip`] — bistellar flips: [`flips`], [`neighbors`].
 //! * [`flipgraph`] — every triangulation connected to a seed by flips:
 //!   [`FlipGraph`], [`all_connected`].
+//! * [`extension`] — every triangulation, by a backtracking search:
+//!   [`ExtensionGraph`], [`all_triangulations`].
 //! * [`Triangulation::check`] — whether a set of simplices is a triangulation.
 
 mod check;
+pub mod extension;
 mod fine;
 pub mod flip;
 pub mod flipgraph;
 mod placing;
 
+pub use extension::{ExtensionGraph, all_triangulations};
 pub use fine::fine;
 pub use flip::{Flip, FlipRep, flips, neighbors};
 pub use flipgraph::{FlipGraph, all_connected};
@@ -67,6 +71,13 @@ impl Triangulation {
             check_shape(s, n, rank)?;
         }
         Ok(Self { n, rank, simplices })
+    }
+
+    /// A triangulation whose shape the caller guarantees, as
+    /// [`new`](Self::new) would check it (only in debug builds here).
+    pub(crate) fn from_trusted(n: usize, rank: usize, simplices: SimplexSet) -> Self {
+        debug_assert!(simplices.iter().all(|s| check_shape(s, n, rank).is_ok()));
+        Self { n, rank, simplices }
     }
 
     /// A triangulation from a row-major table of labels, one simplex per row

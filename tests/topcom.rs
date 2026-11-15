@@ -13,6 +13,10 @@
 //! Phase 3 adds circuits (`points2circuits`) and flip sets (`points2flips`,
 //! fed the placing, fine and a few more triangulations as seeds), compared as
 //! full sets of `(removed side, added side)` pairs.
+//!
+//! Phase 5 adds cocircuits (`chiro2cocircuits`) and facets (`points2facets`,
+//! which TOPCOM computes from the boundary of the placing triangulation, not
+//! from the cocircuits as the port and the extension graph do).
 
 mod common;
 
@@ -79,6 +83,9 @@ struct Tally {
     circuits: usize,
     flip_sets: usize,
     flips: usize,
+    cocircuit_sets: usize,
+    cocircuits: usize,
+    facet_sets: usize,
 }
 
 /// A JSON list of `[positive, negative]` pairs of label lists.
@@ -134,6 +141,27 @@ fn circuits_and_flips(name: &str, chi: &impl OrientedMatroid, entry: &Value, tal
     }
 }
 
+fn cocircuits_and_facets(name: &str, chi: &impl OrientedMatroid, entry: &Value, tally: &mut Tally) {
+    if let Some(expected) = entry.get("cocircuits") {
+        let mut ours: Vec<_> = om::cocircuits(chi, false)
+            .unwrap()
+            .iter()
+            .map(|y| (y.positive().to_vec(), y.negative().to_vec()))
+            .collect();
+        ours.sort();
+        assert_eq!(ours, pairs(expected), "{name}: cocircuits");
+        tally.cocircuit_sets += 1;
+        tally.cocircuits += ours.len();
+    }
+    let facets: Vec<Vec<usize>> = om::Facets::new(chi)
+        .unwrap()
+        .iter()
+        .map(Simplex::to_vec)
+        .collect();
+    assert_eq!(facets, simplex_list(&entry["facets"]), "{name}: facets");
+    tally.facet_sets += 1;
+}
+
 fn check<K: Kind>(entry: &Value, tally: &mut Tally) {
     let name = entry["name"].as_str().unwrap();
     let config: Config<K> = build(entry["matrix"].as_array().unwrap());
@@ -150,6 +178,7 @@ fn check<K: Kind>(entry: &Value, tally: &mut Tally) {
     assert_eq!(fine.check(&chi), Ok(()), "{name}: fine");
     tally.simplices += placing.len() + fine.len();
     circuits_and_flips(name, &chi, entry, tally);
+    cocircuits_and_facets(name, &chi, entry, tally);
 
     if let Some(expected) = entry["chirotope"].as_str() {
         let ours: String = om::to_topcom_string(&chi)
@@ -183,6 +212,8 @@ fn chirotope_placing_and_fine_match_topcom() {
     assert_eq!(tally.chirotopes, 498);
     assert_eq!(tally.circuit_sets, 464);
     assert_eq!(tally.flip_sets, 1662);
+    assert_eq!(tally.facet_sets, 504);
+    assert_eq!(tally.cocircuit_sets, 504);
 }
 
 /// Hand-checkable chirotopes, independent of both TOPCOM and `sign_of_det`.
