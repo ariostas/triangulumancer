@@ -281,9 +281,13 @@ fn to_ibig(x: &Bound<'_, PyAny>) -> PyResult<dashu_int::IBig> {
     if let Ok(v) = x.extract::<i64>() {
         return Ok(v.into());
     }
-    let text = x.str()?;
-    text.to_str()?
-        .parse()
+    // In hexadecimal: decimal conversion of ints beyond 4300 digits is refused
+    // by Python (`sys.set_int_max_str_digits`), and is quadratic besides.
+    let index = x
+        .call_method0("__index__")
+        .map_err(|_| PyTypeError::new_err("expected an integer"))?;
+    let text = index.call_method1("__format__", ("x",))?;
+    dashu_int::IBig::from_str_radix(text.extract::<&str>()?, 16)
         .map_err(|_| PyTypeError::new_err("expected an integer"))
 }
 
