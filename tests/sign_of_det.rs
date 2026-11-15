@@ -655,6 +655,80 @@ fn wide_entries() {
     assert!(arith::sign_of_det_of(&[IBig::ONE; 3], 2).is_err());
 }
 
+/// Adversarial for the filter's error bound: a singular matrix of rank
+/// `n - 1`, up to `12 x 12`, with one entry moved by `±2^t` for every `t` from
+/// `0` to `62`, so that the determinant (`±2^t` times a cofactor) sweeps from
+/// far below the filter's error bound to far above it. The whole matrix is
+/// also scaled by `2^shift` before the move, which makes the entries inexact
+/// in `f64` (`shift >= 30` takes them past `2^53`) and, for the larger shifts,
+/// wider than `i128`. The filter must decline or be right, on every entry
+/// type; across the sweep it must do both for every size, or the sweep missed
+/// its threshold.
+#[test]
+fn filter_threshold_sweep() {
+    let mut rng = Rng(0x5eed_0007);
+    let step = if cfg!(debug_assertions) { 4 } else { 1 };
+    let max_n = if cfg!(debug_assertions) { 9 } else { 12 };
+    let reps = if cfg!(debug_assertions) { 1 } else { 2 };
+    let mut total = [0usize; 2];
+    for n in 2..=max_n {
+        let mut counts = [0usize; 2];
+        for shift in [0u32, 30, 64, 100, 300] {
+            for _ in 0..reps {
+                let base = low_rank_matrix(&mut rng, n, n - 1);
+                let idx = rng.below((n * n) as u64) as usize;
+                for t in (0..63).step_by(step) {
+                    for delta in [1i64 << t, -(1i64 << t)] {
+                        let m: Vec<IBig> = base
+                            .iter()
+                            .enumerate()
+                            .map(|(k, &x)| {
+                                let v = IBig::from(x) << shift as usize;
+                                if k == idx { v + delta } else { v }
+                            })
+                            .collect();
+                        let expected = sign_of(&oracle_det_big(&m, n));
+                        let ctx = || format!("n = {n}, shift = {shift}, t = {t}, {m:?}");
+                        assert_eq!(arith::sign_of_det_of(&m, n).unwrap(), expected, "{}", ctx());
+                        let mut answers = vec![filter::sign_of_det_of(&m, n)];
+                        if let Some(wide) = m
+                            .iter()
+                            .map(|x| i128::try_from(x).ok())
+                            .collect::<Option<Vec<i128>>>()
+                        {
+                            answers.push(filter::sign_of_det_of(&wide, n));
+                            assert_eq!(arith::sign_of_det_of(&wide, n).unwrap(), expected);
+                        }
+                        if let Some(small) = m
+                            .iter()
+                            .map(|x| i64::try_from(x).ok())
+                            .collect::<Option<Vec<i64>>>()
+                        {
+                            let square = SquareMatrix::new(&small, n).unwrap();
+                            answers.push(filter::sign_of_det(square));
+                            assert_eq!(arith::sign_of_det(&small, n).unwrap(), expected);
+                        }
+                        // The entry types convert to the same midpoints and
+                        // radii, so they must also agree with each other.
+                        assert!(answers.windows(2).all(|w| w[0] == w[1]), "{}", ctx());
+                        match answers[0] {
+                            Some(s) => {
+                                assert_eq!(s, expected, "f64 filter: {}", ctx());
+                                counts[0] += 1;
+                            }
+                            None => counts[1] += 1,
+                        }
+                    }
+                }
+            }
+        }
+        assert!(counts.iter().all(|&c| c > 0), "n = {n}: {counts:?}");
+        total[0] += counts[0];
+        total[1] += counts[1];
+    }
+    println!("filter decided {} and declined {}", total[0], total[1]);
+}
+
 /// The default run: a few hundred matrices per family and size.
 #[test]
 fn differential_default() {

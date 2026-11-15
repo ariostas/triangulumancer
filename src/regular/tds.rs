@@ -13,9 +13,6 @@
 //! Vertices are point labels, so the index of every vertex is known without any
 //! search through coordinates (this is what fixes bug B5).
 
-use crate::hash::FastHashMap;
-use std::collections::hash_map::Entry;
-
 use super::predicates::INF;
 use crate::error::{Error, Result};
 
@@ -32,6 +29,22 @@ pub(crate) struct Tds {
     alive: Vec<bool>,
     free: Vec<u32>,
     live: usize,
+    /// Scratch for [`Tds::link_unlinked`], kept to reuse its allocation.
+    open: Vec<(u64, u32, u8)>,
+    /// Per-point marks for [`Tds::same_facet`]: `stamp[v] == epoch` iff `v`
+    /// is in the facet being compared against.
+    stamp: Vec<u32>,
+    epoch: u32,
+}
+
+/// A well-mixed 64-bit image of a vertex (the SplitMix64 finaliser), summed
+/// over a facet's vertices to give a hash independent of their order.
+#[inline]
+fn mix(v: u32) -> u64 {
+    let mut z = u64::from(v).wrapping_add(0x9e37_79b9_7f4a_7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
 }
 
 impl Tds {
@@ -44,6 +57,9 @@ impl Tds {
             alive: Vec::new(),
             free: Vec::new(),
             live: 0,
+            open: Vec::new(),
+            stamp: Vec::new(),
+            epoch: 0,
         }
     }
 
@@ -140,35 +156,107 @@ impl Tds {
     /// Link every unlinked facet among `cells` to the one other facet among
     /// them with the same vertices.
     ///
-    /// This is the hash-map formulation of hole retriangulation from `CGAL.md`
+    /// This is the hashing formulation of hole retriangulation from `CGAL.md`
     /// section 3.6, in place of CGAL's rotor walk. In a valid hole every such
     /// facet has exactly one partner; anything else means the conflict zone
     /// was not a ball, and is reported rather than producing a corrupt mesh.
+    ///
+    /// Facets are hashed by the sum of [`mix`] over their vertices — the
+    /// cell's sum minus the opposite vertex, so `O(d)` per cell — sorted by
+    /// hash, and matched by comparing vertex sets within each run of equal
+    /// hashes, so a hash collision costs time, never correctness.
     pub(crate) fn link_unlinked(&mut self, cells: &[u32]) -> Result<()> {
-        let mut open: FastHashMap<Vec<u32>, (u32, usize)> = FastHashMap::default();
+        let mut open = std::mem::take(&mut self.open);
+        open.clear();
         for &c in cells {
-            for i in 0..self.d1 {
-                if self.neighbor(c, i) != NONE {
-                    continue;
-                }
-                match open.entry(self.facet_key(c, i)) {
-                    Entry::Occupied(e) => {
-                        let (b, j) = e.remove();
-                        self.link(c, i, b, j);
-                    }
-                    Entry::Vacant(e) => {
-                        e.insert((c, i));
-                    }
+            let verts = self.verts(c);
+            let all = verts.iter().fold(0u64, |h, &v| h.wrapping_add(mix(v)));
+            for (i, &v) in verts.iter().enumerate() {
+                if self.neighbor(c, i) == NONE {
+                    open.push((all.wrapping_sub(mix(v)), c, i as u8));
                 }
             }
         }
-        if open.is_empty() {
-            Ok(())
-        } else {
-            Err(Error::Internal(
-                "regular triangulation: a facet of the retriangulated hole has no partner",
-            ))
+        // Deterministic: the entries are distinct.
+        open.sort_unstable();
+        let result = self.pair(&open);
+        self.open = open;
+        result
+    }
+
+    /// Match the facets of `open`, sorted by hash; see [`Tds::link_unlinked`].
+    fn pair(&mut self, open: &[(u64, u32, u8)]) -> Result<()> {
+        let unpaired = Err(Error::Internal(
+            "regular triangulation: a facet of the retriangulated hole has no partner",
+        ));
+        let mut start = 0;
+        while start < open.len() {
+            let hash = open[start].0;
+            // Runs are almost always pairs: scan, rather than search.
+            let mut end = start + 1;
+            while end < open.len() && open[end].0 == hash {
+                end += 1;
+            }
+            let run = &open[start..end];
+            for (k, &(_, a, i)) in run.iter().enumerate() {
+                let i = usize::from(i);
+                if self.neighbor(a, i) != NONE {
+                    continue;
+                }
+                let mut partner = None;
+                for &(_, b, j) in &run[k + 1..] {
+                    let j = usize::from(j);
+                    if self.neighbor(b, j) == NONE && self.same_facet(a, i, b, j) {
+                        partner = Some((b, j));
+                        break;
+                    }
+                }
+                match partner {
+                    Some((b, j)) => self.link(a, i, b, j),
+                    None => return unpaired,
+                }
+            }
+            start = end;
         }
+        Ok(())
+    }
+
+    /// Whether the facet of `a` opposite slot `i` and that of `b` opposite
+    /// slot `j` have the same vertices: mark one, look up the other. Cells
+    /// never repeat a vertex and the facets have the same size, so
+    /// containment one way suffices.
+    fn same_facet(&mut self, a: u32, i: usize, b: u32, j: usize) -> bool {
+        self.epoch = self.epoch.wrapping_add(1);
+        if self.epoch == 0 {
+            self.stamp.fill(0);
+            self.epoch = 1;
+        }
+        let (d1, epoch) = (self.d1, self.epoch);
+        let mut infinite = false;
+        for k in 0..d1 {
+            let v = self.verts[a as usize * d1 + k];
+            if k == i {
+                continue;
+            }
+            if v == INF {
+                infinite = true;
+            } else {
+                let v = v as usize;
+                if v >= self.stamp.len() {
+                    self.stamp.resize(v + 1, 0);
+                }
+                self.stamp[v] = epoch;
+            }
+        }
+        (0..d1).all(|l| {
+            let w = self.verts[b as usize * d1 + l];
+            l == j
+                || if w == INF {
+                    infinite
+                } else {
+                    self.stamp.get(w as usize) == Some(&epoch)
+                }
+        })
     }
 
     /// The combinatorial invariants: every link is live and symmetric with a

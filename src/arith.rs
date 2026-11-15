@@ -13,10 +13,11 @@
 //! first try a cofactor expansion in checked `i128` (exact, and cheaper than
 //! all three when nothing overflows):
 //!
-//! 1. [`filter`] — Gaussian elimination in `f64` interval arithmetic. Sound
-//!    without control over the rounding mode, which stable Rust does not have:
-//!    every operation is rounded to nearest and then widened outward by one
-//!    ulp. Decides any matrix that is not (nearly) singular.
+//! 1. [`filter`] — Gaussian elimination in `f64` with a running error bound
+//!    per entry (midpoint-radius arithmetic). Sound without control over the
+//!    rounding mode, which stable Rust does not have: the radii are inflated
+//!    by constants that provably absorb their own rounding errors. Decides any
+//!    matrix that is not (nearly) singular.
 //! 2. [`bareiss`] in checked `i128`. Fraction-free, so every intermediate is a
 //!    minor of the input and the Hadamard bound applies to all of them.
 //!    Decides exact zeros, and anything whose minors fit in 127 bits.
@@ -194,9 +195,9 @@ mod sealed {
 /// Sealed; the three implementers are the only ones. The methods are what the
 /// tiers need from an entry.
 pub trait Entry: sealed::Sealed + Clone {
-    /// An interval `(lo, hi)` of finite `f64`s containing the value, or `None`
-    /// if the value is beyond the `f64` range.
-    fn bracket(&self) -> Option<(f64, f64)>;
+    /// A midpoint and radius `(m, r)` of finite `f64`s with `|value - m| <= r`,
+    /// or `None` if the value is beyond the `f64` range.
+    fn approx(&self) -> Option<(f64, f64)>;
     /// The value as an `i128`, if it fits.
     fn to_i128(&self) -> Option<i128>;
     /// The value as an arbitrary-precision integer.
@@ -206,8 +207,8 @@ pub trait Entry: sealed::Sealed + Clone {
 }
 
 impl Entry for i64 {
-    fn bracket(&self) -> Option<(f64, f64)> {
-        Some(filter::bracket_i128(i128::from(*self)))
+    fn approx(&self) -> Option<(f64, f64)> {
+        Some(filter::approx_i128(i128::from(*self)))
     }
     fn to_i128(&self) -> Option<i128> {
         Some(i128::from(*self))
@@ -221,8 +222,8 @@ impl Entry for i64 {
 }
 
 impl Entry for i128 {
-    fn bracket(&self) -> Option<(f64, f64)> {
-        Some(filter::bracket_i128(*self))
+    fn approx(&self) -> Option<(f64, f64)> {
+        Some(filter::approx_i128(*self))
     }
     fn to_i128(&self) -> Option<i128> {
         Some(*self)
@@ -236,10 +237,11 @@ impl Entry for i128 {
 }
 
 impl Entry for IBig {
-    fn bracket(&self) -> Option<(f64, f64)> {
+    fn approx(&self) -> Option<(f64, f64)> {
         match i128::try_from(self) {
-            Ok(v) => Some(filter::bracket_i128(v)),
-            Err(_) => filter::bracket_rounded(self.to_f64().value()),
+            Ok(v) => Some(filter::approx_i128(v)),
+            // Beyond i128, so beyond 2^53: rounded to nearest by dashu.
+            Err(_) => filter::approx_rounded(self.to_f64().value()),
         }
     }
     fn to_i128(&self) -> Option<i128> {
@@ -262,7 +264,7 @@ impl Entry for IBig {
 /// The exact sign of the determinant of the `n x n` matrix `m`, for any
 /// [`Entry`] type.
 ///
-/// The same three tiers as [`sign_of_det`]: the `f64` interval filter, then
+/// The same three tiers as [`sign_of_det`]: the `f64` filter, then
 /// Bareiss in checked `i128` (skipped when an entry does not fit), then Bareiss
 /// over [`IBig`]. For `i64` entries the answer is the same as
 /// [`sign_of_det`]'s.
@@ -303,13 +305,24 @@ pub fn sign_of_det_of<T: Entry>(m: &[T], n: usize) -> Result<Sign> {
     })
 }
 
+/// Tiers 2 and 3 of [`sign_of_det_of`] only, for a caller whose own tier-1
+/// attempt has already declined. The caller guarantees `m.len() == n * n`.
+pub(crate) fn sign_of_det_exact_of<T: Entry>(m: &[T], n: usize) -> Sign {
+    match n {
+        0 => Sign::Positive,
+        1 => m[0].sign(),
+        _ => bareiss::sign_of_det_i128_of(m, n)
+            .unwrap_or_else(|| bareiss::sign_of_det_bigint_of(m, n)),
+    }
+}
+
 /// The determinant of a `2 x 2`, `3 x 3` or `4 x 4` matrix by cofactor
 /// expansion in checked `i128`, or `None` on overflow.
 ///
 /// Tier 0 of the stack: for the small matrices of the low-dimensional
 /// predicates and chirotopes, with entries of moderate size (below about
 /// `2^31` for `4 x 4`, `2^41` for `3 x 3`), a dozen exact multiplications are
-/// cheaper than either the interval filter or Bareiss, and decide exact zeros
+/// cheaper than either the `f64` filter or Bareiss, and decide exact zeros
 /// too. Anything that overflows falls through to the three tiers.
 fn det_small(m: &[i128], n: usize) -> Option<i128> {
     // Every term of the expansion takes one entry from each column, so if
@@ -323,6 +336,12 @@ fn det_small(m: &[i128], n: usize) -> Option<i128> {
         // The bit length of the largest magnitude in column `j`.
         let or = (0..n).fold(0u128, |acc, i| acc | m[i * n + j].unsigned_abs());
         total += 128 - or.leading_zeros();
+    }
+    // Past this, some term of the expansion almost certainly overflows, and
+    // trying costs as much as the filter that decides it next. Purely a
+    // shortcut: every answer below is exact or `None`.
+    if total > 140 {
+        return None;
     }
     let fits_i64 = m.iter().all(|&x| x.unsigned_abs() < 1 << 63);
     if fits_i64 && total <= 120 {

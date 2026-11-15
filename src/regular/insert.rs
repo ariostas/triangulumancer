@@ -16,7 +16,7 @@
 //!    connected and star-shaped from `p`.
 //! 4. **Retriangulate the hole** by coning each boundary facet to `p`, linking
 //!    the new cells outwards through the stored mirror indices and among
-//!    themselves by matching facets in a hash map ([`Tds::link_unlinked`]).
+//!    themselves by matching facets by hash ([`Tds::link_unlinked`]).
 //! 5. A vertex of the zone that is in no new cell has just become **hidden**.
 //!
 //! The conflict test for an infinite cell is the orientation of its hull
@@ -48,6 +48,10 @@ pub(crate) struct Builder<'g> {
     epoch: u64,
     /// Per-point marks for finding newly hidden vertices.
     seen: Vec<u64>,
+    /// Scratch for [`Builder::insert`]: the conflict zone and the new cells,
+    /// kept to reuse their allocations.
+    zone: Vec<u32>,
+    created: Vec<u32>,
 }
 
 impl<'g> Builder<'g> {
@@ -88,6 +92,8 @@ impl<'g> Builder<'g> {
             mark: Vec::new(),
             epoch: 0,
             seen: vec![0; g.len()],
+            zone: Vec::new(),
+            created: Vec::new(),
         };
         b.debug_check()?;
         Ok(b)
@@ -172,7 +178,9 @@ impl<'g> Builder<'g> {
         let (inside, outside) = (2 * self.epoch, 2 * self.epoch + 1);
         self.mark.resize(self.tds.capacity(), 0);
         self.mark[start as usize] = inside;
-        let mut zone = vec![start];
+        let mut zone = std::mem::take(&mut self.zone);
+        zone.clear();
+        zone.push(start);
         let mut head = 0;
         while head < zone.len() {
             let c = zone[head];
@@ -193,7 +201,8 @@ impl<'g> Builder<'g> {
         }
 
         // Step 4: cone every boundary facet to p.
-        let mut created = Vec::new();
+        let mut created = std::mem::take(&mut self.created);
+        created.clear();
         let mut verts = Vec::with_capacity(self.tds.d1());
         for &c in &zone {
             for i in 0..self.tds.d1() {
@@ -242,6 +251,8 @@ impl<'g> Builder<'g> {
             self.tds.release(c);
         }
         self.hint = created[0];
+        self.zone = zone;
+        self.created = created;
         self.debug_check()
     }
 

@@ -1,7 +1,10 @@
 //! The two geometric predicates, and the symbolic perturbation that makes the
 //! power test total.
 //!
-//! Both are determinant signs over [`arith::sign_of_det_of`]:
+//! Both are determinant signs over [`arith::sign_of_det_of`] (for matrices of
+//! size five and up with entries below `2^53`, the filter is first run on
+//! `f64` entries built directly from the coordinates, skipping the integer
+//! matrix unless it declines):
 //!
 //! * `orient(p₀, …, p_d) = sign det [pₖ − p₀]ₖ₌₁..d`, a `d × d` determinant of
 //!   coordinate differences (`CGAL.md` section 4.1);
@@ -42,7 +45,7 @@ use std::cmp::Reverse;
 
 use dashu_int::IBig;
 
-use crate::arith::{self, Sign};
+use crate::arith::{self, Sign, filter};
 use crate::config::PointConfig;
 use crate::error::{Error, Result};
 
@@ -52,9 +55,14 @@ pub(crate) const INF: u32 = u32::MAX;
 /// The lifts, kept narrow when they allow it so that the power test stays in
 /// `i128` arithmetic.
 enum Lifts {
-    Small(Vec<i64>),
+    /// Every lift below [`SMALL_LIFT`] in magnitude, so that the difference
+    /// of two fits in an `i128`. Scaled `f64` weights usually land here.
+    Small(Vec<i128>),
     Big(Vec<IBig>),
 }
+
+/// The bound on [`Lifts::Small`].
+const SMALL_LIFT: i128 = 1 << 126;
 
 /// Reduced coordinates, integer lifts, and the perturbation order.
 pub(crate) struct Geometry {
@@ -64,10 +72,25 @@ pub(crate) struct Geometry {
     lifts: Lifts,
     /// The perturbation priority of each point; larger is more significant.
     priority: Vec<u32>,
+    /// The coordinates, then the lifts, as `f64`, if every one of them is
+    /// below `2^52` in magnitude: then every difference of two is an integer
+    /// below `2^53`, computed exactly in `f64`, and the filter can be fed
+    /// directly (see [`FAST_FROM`]).
+    exact: Option<(Vec<f64>, Vec<f64>)>,
 }
 
-/// Small matrices are built on the stack.
-const INLINE: usize = 81;
+/// Matrices from this size on try the filter on `f64` entries first when
+/// [`Geometry::exact`] allows it. Smaller ones go straight to the exact
+/// cofactor expansion of [`arith::sign_of_det_of`], which is cheaper.
+const FAST_FROM: usize = 5;
+
+/// Integers below this magnitude, and differences of two of them, are exact
+/// in `f64`.
+const EXACT_BELOW: i64 = 1 << 52;
+
+/// Matrices are built on the stack up to `12 x 12`: the power test up to
+/// dimension 11.
+const INLINE: usize = 144;
 
 /// Run `f` on a zeroed scratch matrix of `len` entries: on the stack when it
 /// is small (in a buffer sized to match, since zeroing a large one costs as
@@ -83,6 +106,17 @@ fn with_buffer<R>(len: usize, f: impl FnOnce(&mut [i128]) -> R) -> R {
     }
 }
 
+/// The determinant sign of the `n x n` matrix `m`, skipping the filter if the
+/// caller's own attempt on the same matrix has already declined.
+fn exact_sign<T: arith::Entry>(m: &[T], n: usize, filtered: bool) -> Sign {
+    if filtered {
+        arith::sign_of_det_exact_of(m, n)
+    } else {
+        // The shape is right by construction.
+        arith::sign_of_det_of(m, n).unwrap_or(Sign::Zero)
+    }
+}
+
 impl Geometry {
     /// `reduced` is the full-rank, hull-reduced configuration the predicates
     /// run on; `original` supplies the perturbation order.
@@ -90,11 +124,24 @@ impl Geometry {
         let n = reduced.len();
         let lifts = match lifts
             .iter()
-            .map(|l| i64::try_from(l).ok())
-            .collect::<Option<Vec<i64>>>()
+            .map(|l| i128::try_from(l).ok().filter(|x| x.abs() < SMALL_LIFT))
+            .collect::<Option<Vec<i128>>>()
         {
             Some(small) => Lifts::Small(small),
             None => Lifts::Big(lifts),
+        };
+        let coords = reduced.to_row_major();
+        let exact = match &lifts {
+            Lifts::Small(l)
+                if coords.iter().all(|x| x.abs() < EXACT_BELOW)
+                    && l.iter().all(|x| x.abs() < i128::from(EXACT_BELOW)) =>
+            {
+                Some((
+                    coords.iter().map(|&x| x as f64).collect(),
+                    l.iter().map(|&x| x as f64).collect(),
+                ))
+            }
+            _ => None,
         };
         let mut order: Vec<usize> = (0..n).collect();
         order.sort_by(|&a, &b| original.coords(a).cmp(&original.coords(b)).then(a.cmp(&b)));
@@ -104,9 +151,10 @@ impl Geometry {
         }
         Self {
             d: reduced.dim(),
-            coords: reduced.to_row_major(),
+            coords,
             lifts,
             priority,
+            exact,
         }
     }
 
@@ -149,6 +197,23 @@ impl Geometry {
             Some((slot, q)) if slot == k => q,
             _ => verts[k],
         };
+        if d >= FAST_FROM
+            && let Some((cf, _)) = &self.exact
+        {
+            let point = |i: u32| &cf[i as usize * d..(i as usize + 1) * d];
+            let base = point(at(0));
+            let decided = filter::sign_of_det_integral(d, |buf| {
+                for k in 1..=d {
+                    let p = point(at(k));
+                    for j in 0..d {
+                        buf[(k - 1) * d + j] = p[j] - base[j];
+                    }
+                }
+            });
+            if let Some(sign) = decided {
+                return sign;
+            }
+        }
         let base = self.point(at(0));
         let fill = |buf: &mut [i128]| {
             for k in 1..=d {
@@ -158,12 +223,11 @@ impl Geometry {
                 }
             }
         };
-        let sign = with_buffer(d * d, |buf| {
+        let filtered = d >= FAST_FROM && self.exact.is_some();
+        with_buffer(d * d, |buf| {
             fill(buf);
-            arith::sign_of_det_of(buf, d)
-        });
-        // The shape is right by construction.
-        sign.unwrap_or(Sign::Zero)
+            exact_sign(buf, d, filtered)
+        })
     }
 
     /// The unperturbed power test: positive iff `q̂` is strictly below the
@@ -172,22 +236,42 @@ impl Geometry {
     pub(crate) fn power_side(&self, cell: &[u32], q: u32) -> Sign {
         let d = self.d;
         let n = d + 1;
+        let filtered = n >= FAST_FROM && self.exact.is_some();
+        let decided = match &self.exact {
+            Some((cf, lf)) if filtered => {
+                let point = |i: u32| &cf[i as usize * d..(i as usize + 1) * d];
+                let (qp, lq) = (point(q), lf[q as usize]);
+                filter::sign_of_det_integral(n, |buf| {
+                    for (i, &v) in cell.iter().enumerate() {
+                        let p = point(v);
+                        for j in 0..d {
+                            buf[i * n + j] = p[j] - qp[j];
+                        }
+                        buf[i * n + d] = lf[v as usize] - lq;
+                    }
+                })
+            }
+            _ => None,
+        };
+        if let Some(sign) = decided {
+            return if d % 2 == 0 { sign } else { -sign };
+        }
         let qp = self.point(q);
         let sign = match &self.lifts {
             Lifts::Small(l) => {
-                let lq = i128::from(l[q as usize]);
+                let lq = l[q as usize];
                 let fill = |buf: &mut [i128]| {
                     for (i, &v) in cell.iter().enumerate() {
                         let p = self.point(v);
                         for j in 0..d {
                             buf[i * n + j] = i128::from(p[j]) - i128::from(qp[j]);
                         }
-                        buf[i * n + d] = i128::from(l[v as usize]) - lq;
+                        buf[i * n + d] = l[v as usize] - lq;
                     }
                 };
                 with_buffer(n * n, |buf| {
                     fill(buf);
-                    arith::sign_of_det_of(buf, n)
+                    exact_sign(buf, n, filtered)
                 })
             }
             Lifts::Big(l) => {
@@ -200,10 +284,9 @@ impl Geometry {
                     }
                     buf.push(&l[v as usize] - lq);
                 }
-                arith::sign_of_det_of(&buf, n)
+                exact_sign(&buf, n, false)
             }
-        }
-        .unwrap_or(Sign::Zero);
+        };
         if d % 2 == 0 { sign } else { -sign }
     }
 

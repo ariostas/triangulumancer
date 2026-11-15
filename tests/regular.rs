@@ -360,6 +360,30 @@ fn larger_random_sets() {
     }
 }
 
+/// Dimensions 5 to 7: the predicates' matrices are 5 x 5 and larger, so they
+/// take the filter's `f64` fast path. Coordinates in `{-1, 0, 1}` or
+/// `{-2, …, 2}` make nearly every test degenerate, so the fast path declines
+/// and the exact fallback decides; `2^40` makes the lifts too wide for the
+/// fast path altogether. Certificate only.
+#[test]
+fn high_dimensional_random_sets() {
+    let mut rng = Rng(0x5eed_0604);
+    let reps = if cfg!(debug_assertions) { 2 } else { 12 };
+    for d in 5..=7 {
+        for bound in [1, 2, 1 << 20, 1 << 40] {
+            for _ in 0..reps {
+                let n = d + 2 + rng.below(10) as usize;
+                let config = random_config(&mut rng, n, d, bound);
+                let (kind, lifts) = random_lifts(&mut rng, &config);
+                let what = format!("d = {d}, {kind}, {config:?}, lifts {lifts:?}");
+                let t = regular::from_lifts(&config, lifts.clone())
+                    .unwrap_or_else(|e| panic!("{what}: {e}"));
+                assert_regular(&config, &lifts, &t, &what);
+            }
+        }
+    }
+}
+
 /// Peak resident set size of this process in MiB, from `/proc/self/status`;
 /// `None` where that is unavailable.
 fn peak_rss_mib() -> Option<u64> {
