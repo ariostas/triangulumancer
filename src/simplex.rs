@@ -589,7 +589,8 @@ set_ops! {
 /// hashing are those of the sorted list, so two triangulations with the same
 /// simplices are equal however they were built. A flat list is several times
 /// cheaper than a tree to build, compare, hash and drop, which is what the
-/// enumerations do with triangulations most (`PLAN.md` section 13, phase 7);
+/// enumerations do with triangulations most (`PLAN.md` section 13, "Phase 7
+/// performance");
 /// inserting or removing one simplex costs O(len), which the algorithms here
 /// only do a bounded number of times per pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]

@@ -2,7 +2,7 @@
 //! a simplicial complex.
 //!
 //! The circuit of a dependent `(rank + 1)`-set is what the fine triangulation
-//! flips in (phase 2) and what every bistellar flip is supported on (phase 3).
+//! flips in and what every bistellar flip is supported on.
 //! The flip predicates [`Circuit::containment_ok`] and [`Circuit::link_ok`]
 //! live here, in the oriented-matroid layer rather than in `triang`, per
 //! `PLAN.md` section 6.1: they need nothing but a circuit and a set of

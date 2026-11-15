@@ -17,8 +17,8 @@ use crate::triang::Triangulation;
 
 /// A group of label permutations acting on triangulations.
 ///
-/// The enumerations of phases 4 and 5 are generic over this at exactly the
-/// points TOPCOM consults its `SymmetryGroup`.
+/// The flip-graph and extension-graph enumerations are generic over this at
+/// exactly the points TOPCOM consults its `SymmetryGroup`.
 pub trait Symmetry {
     /// The stabiliser of a triangulation, used to prune flip enumeration.
     type Stabilizer;

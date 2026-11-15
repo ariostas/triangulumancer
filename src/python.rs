@@ -5,17 +5,11 @@
 //! module gets one `register_*` function, so adding bindings for a new feature
 //! touches exactly one place. See `PLAN.md` section 6.4.
 //!
-//! # Migration status
-//!
-//! The classes below carry the full 0.3 API surface so that the shape of the
-//! package is fixed from the start. The configuration classes are real as of
-//! phase 1, the placing and fine triangulations and the `Triangulation`
-//! class as of phase 2, flips and neighbours as of phase 3, the flip-graph
-//! enumeration as of phase 4, the regular triangulations as of phase 6 and
-//! the extension-graph enumeration as of phase 5, which completes the 0.3
-//! surface. Methods for phases that have not landed raise
-//! `NotImplementedError` through [`todo`]; `python/tests/conftest.py` turns
-//! that exception into a skip. None is left.
+//! The classes below carry the full 0.3 API surface, plus the 0.4 additions
+//! (streaming `iter_*` enumerations, exact heights and weights,
+//! `Triangulation.hidden_points`). A binding added ahead of its
+//! implementation can raise `NotImplementedError` through [`todo`], which
+//! `python/tests/conftest.py` turns into a skip; none does.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -60,7 +54,7 @@ impl From<Error> for PyErr {
 
 /// Raise `NotImplementedError` naming the phase that will implement `what`.
 ///
-/// Unused since phase 5 completed the 0.3 surface; kept for bindings that
+/// Unused since the 0.3 surface was completed; kept for bindings that
 /// land ahead of their implementation.
 #[allow(dead_code)]
 fn todo<T>(what: &str, phase: u8) -> PyResult<T> {

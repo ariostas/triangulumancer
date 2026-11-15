@@ -38,8 +38,8 @@ use crate::simplex::{Simplex, SimplexSet};
 /// cardinality so that it can answer questions like [`is_fine`] on its own,
 /// but not the configuration or oriented matroid it triangulates; algorithms
 /// that need signs take one alongside. That lets one representation serve
-/// every source of triangulations — placing and fine (phase 2), flips and the
-/// enumerations (phases 3–5), and regular triangulations (phase 6), whose
+/// every source of triangulations — placing and fine, flips and the
+/// enumerations, and regular triangulations, whose
 /// simplices may have fewer labels than the ambient rank when the
 /// configuration was first reduced to its affine hull.
 ///

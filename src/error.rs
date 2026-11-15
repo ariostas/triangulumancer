@@ -12,8 +12,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Anything that can go wrong constructing configurations or triangulations.
 ///
-/// Marked `#[non_exhaustive]`: later phases and later TOPCOM functionality will
-/// add variants, and doing so should not be a breaking change.
+/// Marked `#[non_exhaustive]`: more of TOPCOM's functionality may add variants,
+/// and doing so should not be a breaking change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {

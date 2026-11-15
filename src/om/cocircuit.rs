@@ -1,7 +1,7 @@
 //! Cocircuits, the facets of a configuration, and which facets of each basis
 //! are interior.
 //!
-//! These are what the extension-graph enumeration (phase 5) needs to tell
+//! These are what the extension-graph enumeration needs to tell
 //! when a set of simplices closes up into a triangulation: a facet of a
 //! simplex either lies on the boundary of the configuration — in one of its
 //! [`Facets`] — or is *interior*, and then a triangulation must cover it
