@@ -835,7 +835,8 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0–6 are complete; Phase 7 is next.** Nothing in Phase 7 has been started.
+**Phases 0–6 are complete; Phase 7 is in progress.** Its release-preparation half is done
+(see "Phase 7 release preparation" below); the performance half is not recorded here yet.
 Phase 6 was developed in parallel on a separate branch and merged.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
@@ -1384,9 +1385,61 @@ memory runs pass in release), clippy with `-D warnings` on both feature sets,
   `crates.io` environment on the repository; neither is set up. The name
   `triangulumancer` is unclaimed on crates.io (checked 2026-11-12) — worth claiming early,
   since the whole point of §4's layout is that the Rust library is publishable.
-* **`cargo package`.** Never run. The `exclude` list in `Cargo.toml` is a guess.
 * **`deploy.yml`.** Only runs on a published release or `workflow_dispatch`, so none of the
-  cibuildwheel configuration has executed. Expect to iterate on it at Phase 7, not before.
+  cibuildwheel configuration has executed. It was reviewed and corrected in Phase 7 (below),
+  and the wheel it builds was reproduced locally with maturin, but cibuildwheel itself has
+  not run. Run it once with `workflow_dispatch` before the release; it publishes nothing
+  then.
+
+### Phase 7 release preparation
+
+Done on Linux x86_64, Python 3.13, from a clean export of `db6f9ec` plus these changes:
+
+* **`README.md`** rewritten for 0.4.0: Python usage for every method, including the 0.4
+  additions, a Rust example, and the one-paragraph licence section of §4. The 0.3 example
+  is kept with its `__repr__` strings verbatim (and its two missing echo lines restored, so
+  it is a valid doctest). Every `>>>` example passes `python -m doctest -o ELLIPSIS` against
+  the built wheel once the code fences are stripped; `python.yml` and `nox -s readme` now
+  run that. The Rust example was compiled and run against the crate.
+* **`CHANGELOG.md`**: the migration notes, listing every behaviour a 0.3 user can observe
+  changing (§10, the B1–B5 fixes, and the per-phase Python decisions above).
+* **`CONTRIBUTING.md`**: setup, checks, layout and conventions, for human contributors.
+* **`cargo package`**: `exclude` replaced by an `include` whitelist — `src/`, the Rust
+  tests and the two committed fixture files, `README.md`, `CHANGELOG.md`, `LICENSE`,
+  `docs-header.html` and the lockfile. 50 files, 766 KiB (399 KiB compressed). `cargo test
+  --locked` passes from the unpacked `.crate`, so the published source is self-testing.
+  Benchmarks are left out; cargo drops their `[[bench]]` targets from the packaged
+  manifest. `rust.yml` now runs `cargo package` and `cargo doc` with `-D warnings` and the
+  KaTeX header (Ubuntu only), and `nox -s package` / `nox -s docs` do the same locally.
+  The header is harmless but currently unused: no doc comment uses `$…$` or `\(…\)`.
+* **Wheel and sdist**: `maturin build --release --locked` gives a 0.66 MB
+  `cp310-abi3-manylinux_2_34_x86_64` wheel (the extension, `__init__.py`, `py.typed`,
+  licence and SBOM only); installed into a fresh venv, it imports and passes the 62 pytest
+  tests. `maturin sdist` (415 KB) includes the Python package but not `python/tests`;
+  building and installing from it in a fresh venv also passes them.
+* **`deploy.yml`**, as reviewed: `CIBW_BUILD` pinned to `cp310-* cp314-* cp314t-*` (the
+  abi3 wheel built once on 3.10, re-tested by cibuildwheel on 3.14, plus the free-threaded
+  wheel — §5.5 — and no `cp313t`); 32-bit Windows skipped (the runners' Rust has no
+  `i686-pc-windows-msvc`, which would have failed the build); the container-only `PATH`
+  moved to `CIBW_ENVIRONMENT_LINUX`, since `$HOME/.cargo/bin:$PATH` with a `:` would
+  corrupt `PATH` on Windows; tests run `{project}/python/tests` with the `test` extra;
+  `macos-15-intel` added for x86_64 macOS wheels, which 0.3 never had; musllinux wheels
+  are built as cibuildwheel's default. `deploy-crate` passes the token as
+  `CARGO_REGISTRY_TOKEN` instead of `cargo login` and drops the unused `id-token`.
+* **`[tool.uv] cache-keys`** also lists `Cargo.lock` (§9).
+
+**Before releasing** (the owner's decisions; nothing here was pushed, tagged or
+published):
+
+* Set the version: `Cargo.toml` is `0.4.0-dev`, which maturin publishes as `0.4.0.dev0`
+  and `__version__` reports as `0.4.0-dev`. Fill in the date in `CHANGELOG.md`.
+* Create the `crates.io` environment and the `CARGO_REGISTRY_TOKEN` secret (a new crate's
+  first publish needs a token; trusted publishing can replace it afterwards), and check the
+  `pypi` environment still has trusted publishing for this repository.
+* Remove `rust-migration` from the triggers of `rust.yml` and `python.yml` on merge.
+* `src/lib.rs`'s crate documentation still says "the port is in progress" and mentions
+  `NotImplementedError`; docs.rs shows it as the front page.
+* Decide §12 question 4.
 
 ### CI runs on this branch
 
