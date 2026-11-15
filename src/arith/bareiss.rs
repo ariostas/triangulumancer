@@ -17,7 +17,7 @@
 
 use dashu_int::IBig;
 
-use super::{Sign, SquareMatrix};
+use super::{Entry, Sign, SquareMatrix};
 
 /// The integer arithmetic Bareiss elimination needs.
 trait Exact: Clone {
@@ -178,6 +178,33 @@ pub fn sign_of_det_bigint(m: SquareMatrix<'_>) -> Sign {
     let mut buf: Vec<IBig> = m.data().iter().map(|&x| IBig::from(x)).collect();
     // Infallible: IBig arithmetic does not overflow.
     det_sign(&mut buf, m.n()).unwrap_or(Sign::Zero)
+}
+
+/// Tier 2 for any [`Entry`] type: Bareiss in checked `i128`. `None` if an
+/// entry does not fit in `i128` or an intermediate overflows.
+///
+/// The caller guarantees `m.len() == n * n`.
+pub fn sign_of_det_i128_of<T: Entry>(m: &[T], n: usize) -> Option<Sign> {
+    if m.len() <= INLINE {
+        let mut buf = [0i128; INLINE];
+        for (dst, x) in buf.iter_mut().zip(m) {
+            *dst = x.to_i128()?;
+        }
+        det_sign(&mut buf[..m.len()], n)
+    } else {
+        let mut buf = m.iter().map(Entry::to_i128).collect::<Option<Vec<_>>>()?;
+        det_sign(&mut buf, n)
+    }
+}
+
+/// Tier 3 for any [`Entry`] type: Bareiss over arbitrary-precision integers.
+/// Always succeeds.
+///
+/// The caller guarantees `m.len() == n * n`.
+pub fn sign_of_det_bigint_of<T: Entry>(m: &[T], n: usize) -> Sign {
+    let mut buf: Vec<IBig> = m.iter().map(Entry::to_ibig).collect();
+    // Infallible: IBig arithmetic does not overflow.
+    det_sign(&mut buf, n).unwrap_or(Sign::Zero)
 }
 
 /// The rank of a `rows x cols` row-major matrix in checked `i128`, or `None`
