@@ -10,7 +10,7 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phases 0–6 complete. **Phase 7 is next.**
+> ## ▶ Status: Phases 0–6 complete; Phase 7's engineering is done. **What remains is the 0.4.0 release** — the owner's decisions listed in §13 under "Before releasing" (version and date, the crates.io token and environments, a `workflow_dispatch` dry run of `deploy.yml`, merging to `main`).
 >
 > Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
 > integer configurations with exact rank and affine-hull reduction (`config`),
@@ -27,7 +27,11 @@ result looks like*, and *how we know it is correct*.
 > `flips`/`bistellar_flips`/`neighbors`, `Flip`, `all_connected_triangulations` and
 > `all_triangulations` each with a streaming `iter_*` twin, `delaunay_triangulation`,
 > `triangulate_with_weights`/`_heights` (exact int/`Fraction` inputs accepted) and
-> `Triangulation.hidden_points`. No `NotImplementedError` stub is left.
+> `Triangulation.hidden_points`. No `NotImplementedError` stub is left. Phase 7 added
+> Criterion benchmarks and a comparison against 0.3.0, the performance work of §13
+> ("Phase 7 performance": everything TOPCOM did is 3–65× faster, and Delaunay is at or
+> ahead of CGAL except in 3-D), and the release preparation (README, CHANGELOG,
+> CONTRIBUTING, packaging, `deploy.yml`, crate documentation).
 >
 > * **§7** — the phase table and what each phase ships.
 > * **§13** — what exists, what CI has verified, and **the per-phase decisions later
@@ -273,7 +277,11 @@ The three-tier predicate stack, shared by both backends:
 
 1. **`f64` with a derived error bound.** Rust has no stable rounding-mode control, so CGAL's
    `Interval_nt_advanced` is not portable; error-bounded round-to-nearest with `f64::mul_add`
-   is the Rust idiom. Handles the overwhelming majority of calls.
+   is the Rust idiom. Handles the overwhelming majority of calls. *(As built: Phases 1–6
+   used `[lo, hi]` intervals widened by one ulp after every operation; Phase 7 replaced
+   them with Gaussian elimination on `f64` midpoints with a running error bound, whose
+   proof is in `src/arith/filter.rs` — see §13, "Phase 7 performance". No `mul_add`:
+   without the `fma` target feature it is a library call.)*
 2. **`i128` fraction-free Bareiss.** Every intermediate is itself a minor of the input, so
    the Hadamard bound applies to *every* intermediate, not just the result.
 3. **Bigint Bareiss** on `checked_*` overflow. Astronomically rare for realistic input.
@@ -470,7 +478,7 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ✅ **done** |
 | 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ✅ **done** |
 | 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ✅ **done** |
-| 7 | Parity, performance, release | the 0.4.0 release | low | ▶ **next** |
+| 7 | Parity, performance, release | the 0.4.0 release | low | ◐ **engineering done; release pending** |
 
 Phases 5 and 6 are independent of each other and share only the Phase 1 foundation, so they
 can be taken in either order, or in parallel.
@@ -640,6 +648,12 @@ graph is connected, the two enumerations must produce identical sets).
 completes. That configuration is the phase's headline target, not a stretch goal: it is the
 one input in the corpus the C++ cannot handle at all.
 
+*Revised:* "completes" was written before anyone knew the size of the answer. It has more
+than 8.3 × 10⁹ triangulations (below), so no enumeration completes in reasonable time. The
+criterion that was met instead is that it **streams in constant memory** — starts at once,
+never grows, can be counted, filtered or abandoned, and `par_count` spends every core on it.
+The full count is the `#[ignore]`d `vc_degenerate_flip_count` test.
+
 **Met.** `tests/extension.rs` matches all 54 trusted `all_triangulations[_fine]` results of
 the core corpus exactly, in canonical order (1 576 triangulations, every one `check`ed; 6
 "not full rank" rejections), and the six B1 configurations give the same set as the fixed
@@ -711,7 +725,7 @@ all identical. The flip-based oracle was not used: flips are Phase 3, being buil
 parallel; the brute-force oracle is the stronger check on small inputs anyway, since it
 also fixes the tie-breaking. Decisions are in §13.
 
-### ▶ Phase 7 — Parity, performance, release
+### ◐ Phase 7 — Parity, performance, release — **engineering DONE; release pending**
 
 * Full differential suite green across the corpus, order-sensitive per §5.6.
 * Criterion benchmarks against the `0.3.0` oracle. Watch two things specifically:
@@ -724,6 +738,13 @@ also fixes the tie-breaking. Decisions are in §13.
   here to match, so this is upside, not parity.
 * README, rustdoc with KaTeX, migration notes.
 * Release **0.4.0** to PyPI *and* crates.io.
+
+**Status.** Everything but the release itself is done: the differential suites are green,
+the benchmarks exist and are recorded against 0.3.0, incremental flips landed behind a
+debug-assert, the documentation and packaging are ready (§13, "Phase 7 release
+preparation" and "Phase 7 performance"). The parallel flip-graph BFS was considered and
+not done (reasons in §13). The release steps are the owner's: see "Before releasing" in
+§13.
 
 ---
 
@@ -838,9 +859,10 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0–6 are complete; Phase 7 is in progress.** Its release-preparation half is done
-(see "Phase 7 release preparation" below), and so is the performance half ("Phase 7
-performance" below).
+**Phases 0–6 are complete, and so is Phase 7's engineering**: its release preparation
+(see "Phase 7 release preparation" below) and its performance work ("Phase 7
+performance" below). What remains is the release itself, which needs the owner's
+decisions ("Before releasing", below).
 Phase 6 was developed in parallel on a separate branch and merged.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
@@ -849,7 +871,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 128 tests, plus the `#[ignore]`d 10⁶-matrix, full flip-graph, 20 000-configuration regular-fuzz, full extension-graph, `vc_degenerate_flip`, 600-configuration brute-force, long invariance and 50 000-point Delaunay-memory runs |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 135 tests (with the crate doctest), plus the `#[ignore]`d 10⁶-matrix, full flip-graph, 20 000-configuration regular-fuzz, full extension-graph, `vc_degenerate_flip`, 600-configuration brute-force, long invariance and 50 000-point Delaunay-memory runs |
 | Python | `pytest`: 62 pass, no skips |
 | Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, ~245 KiB, TOPCOM's own CLI tools |
 
@@ -857,7 +879,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | Module | Contents |
 |---|---|
-| `lib.rs` | `ConfigKind`, the layering doc comment |
+| `lib.rs` | `ConfigKind`, and the crate documentation (docs.rs front page: layout, the OM seam, a doctested example, features) |
 | `error.rs` | the `#[non_exhaustive] Error` enum; Phase 1 added `InvalidShape` and `IndexOutOfRange`, Phase 6 `InvalidParameter` |
 | `arith.rs`, `arith/{filter,bareiss}.rs` | `Sign`, `SquareMatrix`, `sign_of_det`, `rank`; the three tiers, each public on its own |
 | `config.rs`, `config/hull.rs` | `Config<K: Kind>` with markers `Points`/`Vectors`, `Lockable<K>`, `reduce_to_hull` |
@@ -899,7 +921,8 @@ it with `mod common;`.
   Up to `n = 8` nothing allocates before the bigint tier.
 * The filter is **interval Gaussian elimination**, rounding to nearest and widening each
   result outward by one ulp (sound without rounding-mode control; inputs beyond `2^53` enter
-  as one-ulp intervals). It declines every singular matrix by construction, so **an exact zero
+  as one-ulp intervals). *(Phase 7 replaced the intervals by midpoints with a running
+  error bound; same decisions, about a third of the cost. See "Phase 7 performance".)* It declines every singular matrix by construction, so **an exact zero
   always costs one `i128` Bareiss run**. Chirotopes of degenerate configurations are full of
   zeros; if Phase 7 profiling shows that matters, a cheap exact-zero pre-check is the lever.
 * **Entries are `i64` only.** Phase 6 needs more: `|p|²` needs `i128`, and scaled `f64`
@@ -1441,8 +1464,6 @@ published):
   first publish needs a token; trusted publishing can replace it afterwards), and check the
   `pypi` environment still has trusted publishing for this repository.
 * Remove `rust-migration` from the triggers of `rust.yml` and `python.yml` on merge.
-* `src/lib.rs`'s crate documentation still says "the port is in progress" and mentions
-  `NotImplementedError`; docs.rs shows it as the front page.
 * Decide §12 question 4.
 
 ### Phase 7 performance
@@ -1461,30 +1482,36 @@ weights. `benches/compare_oracle.py` times the same configurations (same SplitMi
 through Python, each workload in a subprocess, and prints a table from two runs; its
 docstring shows how to set up the `0.3.0` venv.
 
-**Against 0.3.0 through Python** (median; both include building the configuration):
+**Against 0.3.0 through Python** (median; both include building the configuration). Taken
+at the end of Phase 7 on an otherwise idle machine; 0.3.0's own numbers came out lower than
+in an earlier, loaded run (e.g. 1.23 s rather than 1.67 s in 10-D), so only compare rows
+within this table:
 
 | workload | 0.3.0 | 0.4.0-dev | |
 |---|---:|---:|---:|
-| `placing_triangulation`, 100 random points in 3-D | 56.8 ms | 1.07 ms | 53× |
-| `fine_triangulation`, same | 244 ms | 3.74 ms | 65× |
-| `placing_triangulation`, 60 random points in 4-D | 178 ms | 5.28 ms | 34× |
-| `fine_triangulation`, same | 285 ms | 9.05 ms | 31× |
-| `neighbors()` of a fine triangulation, 40 points in 3-D | 8.44 ms | 0.73 ms | 12× |
-| `all_connected_triangulations()`, 3×4 grid (14 842) | 607 ms | 188 ms | 3.2× |
-| `all_connected_triangulations(only_fine=True)`, same | 17.4 ms | 5.78 ms | 3.0× |
-| `all_triangulations()`, same (14 842) | 79.8 ms | 6.03 ms | 13× |
-| `delaunay_triangulation()`, 10 000 random points in 2-D | 104 ms | 50.1 ms | 2.1× |
-| same, 2 000 random points in 3-D | 31.9 ms | 38.9 ms | 0.8× |
-| same, 2 000 points of a 3-D lattice (range 8) | 15.8 ms | 26.9 ms | 0.6× |
-| same, 300 random points in 5-D | 173 ms | 473 ms | 0.4× |
-| same, 40 random points in 10-D | 1.67 s | 4.34 s | 0.4× |
-| `triangulate_with_weights` (`f64`), 2 000 points in 3-D | 46.4 ms | 63.8 ms | 0.7× |
+| `placing_triangulation`, 100 random points in 3-D | 54.6 ms | 1.14 ms | 48× |
+| `fine_triangulation`, same | 230 ms | 3.87 ms | 59× |
+| `placing_triangulation`, 60 random points in 4-D | 162 ms | 2.75 ms | 59× |
+| `fine_triangulation`, same | 269 ms | 4.78 ms | 56× |
+| `neighbors()` of a fine triangulation, 40 points in 3-D | 8.04 ms | 0.744 ms | 11× |
+| `all_connected_triangulations()`, 3×4 grid (14 842) | 555 ms | 189 ms | 2.9× |
+| `all_connected_triangulations(only_fine=True)`, same | 21.6 ms | 5.73 ms | 3.8× |
+| `all_triangulations()`, same (14 842) | 76.7 ms | 5.69 ms | 13× |
+| `delaunay_triangulation()`, 10 000 random points in 2-D | 99.4 ms | 42.6 ms | 2.3× |
+| same, 2 000 random points in 3-D | 32.0 ms | 37.6 ms | 0.85× |
+| same, 2 000 points of a 3-D lattice (range 8) | 12.4 ms | 22.3 ms | 0.56× |
+| same, 300 random points in 5-D | 164 ms | 162 ms | 1.0× |
+| same, 40 random points in 10-D | 1.23 s | 1.09 s | 1.1× |
+| `triangulate_with_weights` (`f64`), 2 000 points in 3-D | 28.7 ms | 42.3 ms | 0.68× |
 
-Everything TOPCOM did is faster. **CGAL is still faster for Delaunay/regular in dimension
-≥ 3**, by up to 2.6× in 5-D and 10-D (see "what was not done" below); in 2-D we are ahead.
-`vc_degenerate_flip` has no 0.3 column: 0.3 runs out of memory on it.
+Everything TOPCOM did is faster. Delaunay is ahead of CGAL in 2-D and level with it in 5-D
+and 10-D (it was 2.6× behind there before the filter was replaced; see below); CGAL is still
+ahead in 3-D, on lattices and with `f64` weights. Interleaved runs pinned to one CPU under
+load agreed: 1.09× in 5-D, 1.13× in 10-D. `vc_degenerate_flip` has no 0.3 column: 0.3
+runs out of memory on it.
 
-**Rust before and after Phase 7** (Criterion, the same machine):
+**Rust before and after Phase 7** (Criterion, the same machine; the Delaunay and regular
+"after" column is before the filter replacement below, which has its own table):
 
 | benchmark | before | after |
 |---|---:|---:|
@@ -1559,16 +1586,10 @@ at 53 MiB (was 64).
 
 **Not done, and why.**
 
-* **The interval filter for `n ≥ 5`** is now the whole cost of Delaunay in 5-D and 10-D
-  (about half the profile is `filter::eliminate`); that is why CGAL is still 2.6× ahead
-  there. The lever is a cheaper sound filter — midpoint-radius arithmetic (Rump) instead
-  of `[lo, hi]` with `next_up`/`next_down` after every operation, or semi-static error
-  bounds — but its soundness argument needs care that a performance phase should not
-  rush. Converting `i128` entries through `i64` was tried and made no difference.
-* **3-D Delaunay** is within 0.8× of CGAL; the remaining cost is spread over the 4×4
-  determinants (now on the fast path) and the hash-map hole retriangulation. Lattices
-  (0.6×) spend extra time in symbolic-perturbation ties, and `f64` weights (0.7×) have lifts
-  too wide for the fast path.
+* **3-D Delaunay** is at 0.85× of CGAL; the remaining cost is spread over the 4×4
+  determinants (on the exact cofactor fast path) and the hole retriangulation. Lattices
+  (0.56×) spend extra time in symbolic-perturbation ties, and `f64` weights (0.68×) have
+  lifts too wide for the cofactor fast path, so their 4×4 tests go through the filter.
 * **Parallel flip-graph BFS**: not attempted. A level-synchronous parallel BFS can keep
   the yielded *set* deterministic but not the streaming order without buffering whole
   levels, and the per-node work is now small enough (≈ 12 µs) that a sharded visited set
@@ -1577,6 +1598,72 @@ at 53 MiB (was 64).
   62-bit entries, 2 000 each — 4×4: dashu 1.7 µs, `BInt<16>` (1024-bit) 5.6 µs; 8×8: dashu
   37 µs, `BInt<16>` 82 µs; 512-bit `bnum` is also slower than dashu and already overflows at
   8×8. dashu stays.
+
+#### Closing the high-dimensional Delaunay gap
+
+Profiling `delaunay/random_40x10` (`perf record` on the Criterion binary) showed 59 % in
+the interval filter's `eliminate`, 4 % in the software `i128 → f64` conversion, 3 % in a
+heap allocation for every `11 × 11` matrix (the filter's inline buffer held 64 entries),
+and 15–20 % in `Tds::link_unlinked`, which allocated a sorted `Vec<u32>` key for every
+facet. What changed:
+
+* **The filter (`arith/filter.rs`) is midpoint-radius Gaussian elimination**: partial
+  pivoting on `f64` midpoints, with a radius per entry bounding its distance from the value
+  exact elimination (same row exchanges) would produce. The radius recurrences are
+  first-order error propagation plus the rounding of the midpoint operations; they are
+  evaluated in round to nearest, then inflated by `C = 1 + 2⁻⁴⁰` and padded by
+  `E = 2⁻¹⁰⁰⁰`, which provably absorbs every rounding and underflow error made computing
+  them (`C ≥ (1 + u)¹⁰`; `E` far above any `η = 2⁻¹⁰⁷⁵` loss). Pivots must satisfy
+  `r/|m| ≤ 1/4` (the last one only `r < |m|`); non-finite values provably reach a pivot and
+  make the filter decline. The full proof is the module's doc comment. Per updated entry:
+  two operations for the midpoint and about a dozen branch-free, vectorising ones for the
+  radius, against four products, six comparisons and four `next_up`/`next_down` before.
+  Same decisions in practice: on the default differential run it decides 14 680
+  near-singular matrices to the old filter's 14 644, and 6 fewer of the `extremes` family.
+  `Entry::bracket` (an interval) became `Entry::approx` (a midpoint and radius). Stack
+  buffers now go to `12 × 12`; `eliminate` is monomorphised for `n = 5..=11`.
+* **The predicates feed the filter directly in `f64`** (`regular/predicates.rs`) when every
+  coordinate and lift is below `2⁵²` — differences are then integers below `2⁵³`, exact in
+  `f64` — for matrices of size five and up. Only if the filter declines is the `i128`
+  matrix built, and then the filter is skipped (`arith::sign_of_det_exact_of`). Lifts that
+  fit in `i128` (below `2¹²⁶`, so their differences fit too) are kept as `i128` instead of
+  `IBig`, which keeps scaled `f64` weights off the heap; and `det_small` no longer attempts
+  checked arithmetic when the column bit lengths sum past 140, where it would overflow and
+  then the filter would decide anyway.
+* **Hole retriangulation hashes facets without allocating**: each facet's hash is the sum of
+  a mixing function over its vertices (the cell's sum minus the opposite vertex, `O(d)` per
+  cell); the unlinked facets go into a reused buffer, are sorted by hash, and are matched
+  within each run of equal hashes by an exact vertex-set comparison (per-point stamps,
+  `O(d)`), so a collision costs time, never correctness. `Builder::insert` reuses its zone
+  and new-cell vectors.
+
+Release builds on the same idle machine, before and after (best of 10, or of 3 in 10-D):
+
+| Delaunay / regular | before | after | |
+|---|---:|---:|---:|
+| 10 000 random points in 2-D | 38.1 ms | 36.7 ms | 1.04× |
+| 2 000 random points in 3-D | 36.8 ms | 31.7 ms | 1.16× |
+| 2 000 points of a 3-D lattice | 22.3 ms | 21.0 ms | 1.06× |
+| `f64` weights, 2 000 points in 3-D | 57.6 ms | 40.6 ms | 1.42× |
+| 300 random points in 5-D | 457 ms | 146 ms | 3.1× |
+| 40 random points in 10-D | 4.19 s | 1.07 s | 3.9× |
+
+and Criterion's `sign_of_det/filter_only_n×n` (1 000 random matrices, entries up to
+1 000): 3×3 242 → 153 µs, 4×4 493 → 250 µs, 6×6 1.49 → 0.44 ms, 8×8 3.23 → 0.81 ms.
+
+**Validation.** `tests/sign_of_det.rs` gained `filter_threshold_sweep`: singular rank-`n − 1`
+matrices up to `12 × 12`, one entry moved by `±2^t` for every `t` in `0..63`, so the
+determinant sweeps from far below the filter's error bound to far above it, with the whole
+matrix optionally scaled by `2^30`, `2^64`, `2^100` or `2^300` first (inexact and
+beyond-`i128` entries); the filter must decline or agree with the exact oracle, must give
+the same answer on `i64`, `i128` and `IBig` entries, and must both decide and decline at
+every size (9 885 decided and 17 835 declined in a four-repetition release run; the
+default is two). The `#[ignore]`d 10⁶-matrix run passes (538 472 filter decisions).
+`tests/regular.rs` gained `high_dimensional_random_sets` — dimensions 5–7, coordinates in
+`{−1, 0, 1}`, `{−2..2}`, `2²⁰` and `2⁴⁰` — so the `f64` fast path, its exact fallback on
+degenerate input, and the wide-lift path are all certified by the regularity oracle. The
+long regular fuzz, the long invariance suite and the 50 000-point memory test (peak
+54 MiB) pass.
 
 ### CI runs on this branch
 
@@ -1666,9 +1753,11 @@ regenerating to do any of phases 1–7.
 
 Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
 
-### Starting Phase 7
+### Picking up after Phase 7
 
-Phases 0–6 are done (recorded in §7, decisions in §13). Notes for Phase 7 from Phase 5:
+Phases 0–6 and Phase 7's engineering are done (recorded in §7, decisions in §13); what
+remains is the release ("Before releasing" in §13). Notes from the earlier phases that
+still apply to any further work:
 
 * **Cap memory on this kind of machine.** Run every cargo, test, Python and TOPCOM command
   under `systemd-run --user --scope -q -p MemoryMax=3G -p MemorySwapMax=0 timeout <s> …`.
@@ -1676,11 +1765,8 @@ Phases 0–6 are done (recorded in §7, decisions in §13). Notes for Phase 7 fr
   themselves are not the risk any more (the extension graph streams in constant memory),
   but collecting `vc_degenerate_flip`'s triangulations into a list, in Rust or Python,
   never finishes: only count or stream it.
-* **Performance baselines** (release, `vc_degenerate_flip`): counting runs at about
-  1.6 M triangulations/s per thread (about 0.5 M/s when each `Triangulation` is built, so
-  the `BTreeSet`-based `Triangulation` is now the bottleneck of the iterator — interning
-  or a flat sorted representation is the lever), against TOPCOM's ~88 k/s at `-O1`.
-  Setup takes 26 ms. These are what Criterion should track.
+* **Performance baselines** are the Criterion suites in `benches/` and the 0.3.0
+  comparison in `benches/compare_oracle.py`; §13 "Phase 7 performance" has the numbers.
 * `ExtensionGraph::par_count` is the template for parallel enumeration (and for the
   optional parallel flip-graph BFS): `Search::split` donates subtrees on demand. A
   parallel *iterator* would need a channel and gives up DFS order.
