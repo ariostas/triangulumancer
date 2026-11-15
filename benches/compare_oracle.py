@@ -16,6 +16,9 @@ finish (or crashes on) is recorded as such instead of stopping the run. Cap
 memory around the whole run (see PLAN.md section 14).
 """
 
+# A command line tool: it reports on stdout and stderr.
+# ruff: noqa: T201
+
 from __future__ import annotations
 
 import argparse
@@ -25,6 +28,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 MASK = (1 << 64) - 1
@@ -67,12 +71,16 @@ def grid(a: int, b: int) -> list[list[int]]:
 
 def workloads() -> dict[str, Callable[[], Callable[[], Any]]]:
     """Name -> setup, returning the timed call. Setup is not timed."""
-    from triangulumancer import PointConfiguration as P  # noqa: N814
+    # Imported here, so that the driver process never loads either build.
+    from triangulumancer import PointConfiguration as P  # noqa: PLC0415
 
     def construction(method: str, pts: list[list[int]]) -> Callable[[], Any]:
         # A fresh configuration per call: neither build caches anything on
         # it, but this keeps both honest.
-        return lambda: getattr(P(pts), method)()
+        def call() -> Any:
+            return getattr(P(pts), method)()
+
+        return call
 
     def neighbors() -> Callable[[], Any]:
         t = P(random_points(3, 40, 3, 100)).fine_triangulation()
@@ -134,19 +142,17 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.table:
-        with open(args.table[0]) as f:
-            old = json.load(f)
-        with open(args.table[1]) as f:
-            new = json.load(f)
+        old = json.loads(Path(args.table[0]).read_text())
+        new = json.loads(Path(args.table[1]).read_text())
         print("| workload | 0.3.0 | this build | speed-up |")
         print("|---|---:|---:|---:|")
         for name, n in new.items():
             o = old.get(name, {})
-            fmt = lambda r: (  # noqa: E731
+            fmt = lambda r: (
                 f"{r['median'] * 1e3:.3g} ms" if "median" in r else r.get("error", "-")
             )
             ratio = (
-                f"{o['median'] / n['median']:.1f}×"
+                f"{o['median'] / n['median']:.1f}x"
                 if "median" in o and "median" in n
                 else "-"
             )
@@ -161,7 +167,15 @@ def main() -> None:
     for name in workloads():
         if args.only and args.only not in name:
             continue
-        cmd = [sys.executable, "-I", __file__, "--one", name, "--budget", str(args.budget)]
+        cmd = [
+            sys.executable,
+            "-I",
+            __file__,
+            "--one",
+            name,
+            "--budget",
+            str(args.budget),
+        ]
         try:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=args.timeout, check=False

@@ -821,6 +821,9 @@ everything else there is a matter of *where* code is put rather than how much of
    `triang::flipgraph`; the name is unchanged.)*
 3. **`bnum` vs `dashu-int`** for the fallback tier — resolve by benchmark in Phase 7, after
    §5.1's API decision has fixed the bit bound.
+   *(Phase 7: keep `dashu-int`. Bareiss over `bnum::BInt` was slower at every size measured,
+   and a fixed width cannot cover scaled `f64` weights anyway; see "Phase 7 performance" in
+   §13.)*
 4. **Which of §6.3's "free" items to actually expose in 0.4.0.** Counting variants, the
    chirotope, circuits, cocircuits and facets all exist as internals by Phase 5 and cost only
    an API surface plus bindings. Exposing them is cheap but each one is a compatibility
@@ -836,7 +839,8 @@ feature.)*
 ## 13. Current status
 
 **Phases 0–6 are complete; Phase 7 is in progress.** Its release-preparation half is done
-(see "Phase 7 release preparation" below); the performance half is not recorded here yet.
+(see "Phase 7 release preparation" below), and so is the performance half ("Phase 7
+performance" below).
 Phase 6 was developed in parallel on a separate branch and merged.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
@@ -871,7 +875,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `regular/{mod,lift,predicates,tds,insert}.rs` | `delaunay`, `with_weights`, `with_heights`, `from_lifts`; `Scalar` exact lifts; CGAL-compatible symbolic perturbation; cell arena; walk + conflict-zone insertion |
 | `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations`, `all_triangulations`, `iter_all_triangulations` and `TriangulationIterator` (over either search); CGAL-replacement methods and `hidden_points`; no `todo()` stub is left |
 
-§4's layout is complete except `om/gale.rs` (reserved) and `benches/` (Phase 7).
+§4's layout is complete except `om/gale.rs` (reserved); `benches/` landed in Phase 7.
 
 Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s),
@@ -1440,6 +1444,139 @@ published):
 * `src/lib.rs`'s crate documentation still says "the port is in progress" and mentions
   `NotImplementedError`; docs.rs shows it as the front page.
 * Decide §12 question 4.
+
+### Phase 7 performance
+
+Measured on Linux x86_64 (8 cores, other work running), release builds, every command
+under the memory cap of §14.
+
+**Benchmarks.** `benches/` has three Criterion suites (`cargo bench --bench arith|triang|regular`)
+over seeded workloads in `benches/common/mod.rs`: the determinant tiers separately and
+together (generic, singular, wide and `IBig` entries, 3×3 to 12×12); placing and fine
+(100 points in 3-D, 60 in 4-D, 300 in 3-D with spilled simplices); warm `flip_reps` and
+cold `neighbors`; the flip-graph BFS (3×4 grid, all and fine); the extension graph (count
+and iterate the 3×4 grid, setup and 100 000 items of `vc_degenerate_flip`); visited-set
+hashing; Delaunay in 2, 3, 5 and 10 dimensions and on a 3-D lattice; regular with `f64`
+weights. `benches/compare_oracle.py` times the same configurations (same SplitMix64 stream)
+through Python, each workload in a subprocess, and prints a table from two runs; its
+docstring shows how to set up the `0.3.0` venv.
+
+**Against 0.3.0 through Python** (median; both include building the configuration):
+
+| workload | 0.3.0 | 0.4.0-dev | |
+|---|---:|---:|---:|
+| `placing_triangulation`, 100 random points in 3-D | 56.8 ms | 1.07 ms | 53× |
+| `fine_triangulation`, same | 244 ms | 3.74 ms | 65× |
+| `placing_triangulation`, 60 random points in 4-D | 178 ms | 5.28 ms | 34× |
+| `fine_triangulation`, same | 285 ms | 9.05 ms | 31× |
+| `neighbors()` of a fine triangulation, 40 points in 3-D | 8.44 ms | 0.73 ms | 12× |
+| `all_connected_triangulations()`, 3×4 grid (14 842) | 607 ms | 188 ms | 3.2× |
+| `all_connected_triangulations(only_fine=True)`, same | 17.4 ms | 5.78 ms | 3.0× |
+| `all_triangulations()`, same (14 842) | 79.8 ms | 6.03 ms | 13× |
+| `delaunay_triangulation()`, 10 000 random points in 2-D | 104 ms | 50.1 ms | 2.1× |
+| same, 2 000 random points in 3-D | 31.9 ms | 38.9 ms | 0.8× |
+| same, 2 000 points of a 3-D lattice (range 8) | 15.8 ms | 26.9 ms | 0.6× |
+| same, 300 random points in 5-D | 173 ms | 473 ms | 0.4× |
+| same, 40 random points in 10-D | 1.67 s | 4.34 s | 0.4× |
+| `triangulate_with_weights` (`f64`), 2 000 points in 3-D | 46.4 ms | 63.8 ms | 0.7× |
+
+Everything TOPCOM did is faster. **CGAL is still faster for Delaunay/regular in dimension
+≥ 3**, by up to 2.6× in 5-D and 10-D (see "what was not done" below); in 2-D we are ahead.
+`vc_degenerate_flip` has no 0.3 column: 0.3 runs out of memory on it.
+
+**Rust before and after Phase 7** (Criterion, the same machine):
+
+| benchmark | before | after |
+|---|---:|---:|
+| `construction/placing/random_100x3` | 2.81 ms | 0.96 ms |
+| `construction/fine/random_100x3` | 12.2 ms | 3.70 ms |
+| `construction/fine/random_60x4` | 13.0 ms | 8.93 ms |
+| `construction/fine/random_300x3` (spilled) | 111 ms | 64.2 ms |
+| `flips/flip_reps/random_40x3_warm` | 191 µs | 135 µs |
+| `flips/neighbors/random_40x3_cold` | 1.05 ms | 0.41 ms |
+| `flip_graph/bfs_all/grid_3x4` | 686 ms | 181 ms |
+| `flip_graph/bfs_fine/grid_3x4` | 20.4 ms | 5.63 ms |
+| `extension/count/grid_3x4` | 2.47 ms | 1.97 ms |
+| `extension/iterate/grid_3x4` | 7.08 ms | 2.79 ms |
+| `extension/iterate_100k/vc_degenerate_flip` | 175 ms | 65.1 ms |
+| `hashing/hashset_insert/grid_3x4` (std hasher) | 10.8 ms | 5.47 ms |
+| `delaunay/random_10000x2` | 259 ms | 42.9 ms |
+| `delaunay/random_2000x3` | 110 ms | 39.1 ms |
+| `delaunay/lattice_2000x3_range8` | 83.7 ms | 23.7 ms |
+| `delaunay/random_300x5` | 485 ms | 473 ms |
+| `delaunay/random_40x10` | 4.30 s | 4.31 s |
+| `regular/float_weights_2000x3` | 118 ms | 60.8 ms |
+
+Iterating the extension graph materialises about 1.5 M triangulations/s on
+`vc_degenerate_flip` (was 0.57 M/s); counting is unchanged at its 1.6 M/s order, so building
+a `Triangulation` is no longer the iterator's bottleneck. The flip-graph BFS is about 12 µs
+per triangulation on the 3×4 grid (was 46 µs). The 50 000-point Delaunay memory test peaks
+at 53 MiB (was 64).
+
+**What changed, and the decisions later work builds on.**
+
+* **`SimplexSet` is a strictly increasing `Vec<Simplex>`**, not a `BTreeSet`. Building
+  (`from_sorted_vec`, crate-private, for already-sorted input such as the extension
+  graph's chosen indices), comparing, hashing and dropping triangulations are flat; set
+  operations are sorted merges; `contains` is a binary search; `insert`/`remove` are
+  O(len), which no algorithm does more than a bounded number of times per pass.
+  `iter()` now returns `std::slice::Iter` and there is `as_slice()` — a public API change
+  of the unreleased crate. Equality, order and hashing are unchanged in meaning. No
+  interning was needed: with a flat representation, hashing the visited set is no longer
+  significant next to computing flips.
+* **`crate::hash`**: an FxHash-style hasher (`FastHashMap`/`FastHashSet`, crate-private)
+  for every internal table keyed by data the algorithms built — the chirotope cache, flip
+  candidates, the flip-graph visited set, `check`, placing's boundary, the TDS facet map.
+  SipHash was about 10 % of the BFS. A dozen lines, no dependency. Iteration order of
+  these maps is deterministic (no random state) but never reaches output.
+* **Incremental flips (`flip::flip_reps_after`)**, TOPCOM's `TriangFlips` update: a
+  parent's flip `G` is kept unless some removed simplex contains `supp(G) \ {z}` for a `z`
+  on `G`'s removed side (its removed simplices are the whole star of those faces, so this
+  is exact without expanding `G`); new candidates are only those containing an added
+  simplex. The BFS frontier carries `(Arc<parent flips>, Flip)`. A `debug_assert_eq!`
+  against `flip_reps` runs on every node in debug builds; the full TOPCOM flip-graph
+  comparison (504 configurations) and the 600-configuration brute-force run were run in
+  release **with debug assertions enabled** (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true`,
+  separate target dir) and pass.
+* **Tier 0 of `sign_of_det`** for 2×2 to 4×4 (`arith::det_small`): cofactor expansion in
+  `i128`. If every entry fits in `i64` and the column bit lengths sum to at most 120, no
+  intermediate can overflow (every term takes one entry per column) and the products are
+  plain widening multiplications; otherwise checked arithmetic, falling through to the
+  three tiers on overflow. Exact, and it decides exact zeros, which the interval filter
+  never does — the "cheap exact-zero pre-check" Phase 1 asked about, for the small sizes.
+  It serves chirotopes of rank ≤ 4 as well as the 2-D/3-D predicates. Tested against
+  bigint Bareiss on 20 000 matrices with mixed column widths, plus the 10⁶ harness.
+* **Regular triangulations insert in a spatial order** (`regular::insertion_order`): a
+  seeded shuffle, then rounds of halving size (BRIO), each sorted along a Z-order curve of
+  the hull-reduced coordinates. The output is the unique regular triangulation of the
+  perturbed lifts, so it is order-independent; the corpus, the invariance suites and the
+  long random fuzz all pass unchanged. A single sorted pass (no rounds) was measured and
+  is slower.
+* **Fine**: the search for the simplex an unused point subdivides tests the circuit
+  coefficients one at a time and stops at the first on the point's side — the same
+  decision as building the whole circuit, at one or two signs per rejected simplex.
+* `Flip::apply` shape-checks only the added simplices.
+
+**Not done, and why.**
+
+* **The interval filter for `n ≥ 5`** is now the whole cost of Delaunay in 5-D and 10-D
+  (about half the profile is `filter::eliminate`); that is why CGAL is still 2.6× ahead
+  there. The lever is a cheaper sound filter — midpoint-radius arithmetic (Rump) instead
+  of `[lo, hi]` with `next_up`/`next_down` after every operation, or semi-static error
+  bounds — but its soundness argument needs care that a performance phase should not
+  rush. Converting `i128` entries through `i64` was tried and made no difference.
+* **3-D Delaunay** is within 0.8× of CGAL; the remaining cost is spread over the 4×4
+  determinants (now on the fast path) and the hash-map hole retriangulation. Lattices
+  (0.6×) spend extra time in symbolic-perturbation ties, and `f64` weights (0.7×) have lifts
+  too wide for the fast path.
+* **Parallel flip-graph BFS**: not attempted. A level-synchronous parallel BFS can keep
+  the yielded *set* deterministic but not the streaming order without buffering whole
+  levels, and the per-node work is now small enough (≈ 12 µs) that a sharded visited set
+  would eat much of the gain. The extension graph's `par_count` remains the parallel path.
+* **`bnum` vs `dashu-int`** (§12 question 3): Bareiss on singular `n × n` matrices of
+  62-bit entries, 2 000 each — 4×4: dashu 1.7 µs, `BInt<16>` (1024-bit) 5.6 µs; 8×8: dashu
+  37 µs, `BInt<16>` 82 µs; 512-bit `bnum` is also slower than dashu and already overflows at
+  8×8. dashu stays.
 
 ### CI runs on this branch
 
