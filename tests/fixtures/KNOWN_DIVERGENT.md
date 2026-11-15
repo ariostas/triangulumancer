@@ -176,3 +176,10 @@ That is the concrete case for the streaming enumeration in
 through a callback or iterator and collects into a `Vec` only when asked, so
 counting or filtering a large enumeration costs no memory. It is also why
 phase 5's acceptance criteria should include this configuration finishing.
+
+**Phase 5 outcome.** The Rust enumeration streams it in constant memory (about 4 MB,
+however long it runs) and yields its first triangulations at once, but it has *more than
+8.3 billion triangulations and more than 4.3 billion fine ones* — counts reached in 44
+minutes on several threads before the runs were stopped. So the oracle's problem was
+never only memory: the complete count takes hours. It is the `#[ignore]`d
+`vc_degenerate_flip_count` in `tests/extension.rs`. Never collect it into a list.

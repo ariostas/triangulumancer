@@ -10,7 +10,7 @@ design-input documents produced by reading the upstream sources:
 Read those for the algorithms. This document covers *why*, *what order*, *what the
 result looks like*, and *how we know it is correct*.
 
-> ## ▶ Status: Phases 0–4 and 6 complete. **Phase 5 is next**, then Phase 7.
+> ## ▶ Status: Phases 0–6 complete. **Phase 7 is next.**
 >
 > Branch `rust-migration`. `src/` has the foundation — exact determinant signs (`arith`),
 > integer configurations with exact rank and affine-hull reduction (`config`), bitset
@@ -18,15 +18,16 @@ result looks like*, and *how we know it is correct*.
 > `OrientedMatroid` trait, a lazy `Chirotope`, `Circuit`), the `Symmetry` seam, and
 > `triang` (the `Triangulation` type with a full validity check, placing and fine), and,
 > from Phase 3, circuits with TOPCOM's flip predicates and `triang::flip` (flip sets,
-> expansion, application), and from Phase 4 `triang::flipgraph` (a streaming BFS, B1
-> fixed), and from Phase 6 `regular/` (Delaunay and regular triangulations replacing CGAL,
-> B3–B5 fixed). Python ships `placing_triangulation`, `fine_triangulation`, a real
-> `Triangulation` class with `__eq__`/`__hash__`, `flips`/`bistellar_flips`/`neighbors`,
-> `Flip`, and `all_connected_triangulations` plus a streaming
-> `iter_all_connected_triangulations`, `delaunay_triangulation`, `triangulate_with_weights`/
-> `_heights` (exact int/`Fraction` inputs accepted) and `Triangulation.hidden_points`;
-> only `all_triangulations` is still a `NotImplementedError` stub. `om/cocircuit.rs` and
-> `triang/extension/` in §4 do not exist yet.
+> expansion, application), from Phase 4 `triang::flipgraph` (a streaming BFS, B1 fixed),
+> from Phase 5 `om::cocircuit` (cocircuits, facets, incidences) and `triang::extension`
+> (a streaming, splittable DFS over partial triangulations, B2 gone by construction), and
+> from Phase 6 `regular/` (Delaunay and regular triangulations replacing CGAL, B3–B5
+> fixed). Python ships the whole 0.3 surface — `placing_triangulation`,
+> `fine_triangulation`, `Triangulation` with `__eq__`/`__hash__`,
+> `flips`/`bistellar_flips`/`neighbors`, `Flip`, `all_connected_triangulations` and
+> `all_triangulations` each with a streaming `iter_*` twin, `delaunay_triangulation`,
+> `triangulate_with_weights`/`_heights` (exact int/`Fraction` inputs accepted) and
+> `Triangulation.hidden_points`. No `NotImplementedError` stub is left.
 >
 > * **§7** — the phase table and what each phase ships.
 > * **§13** — what exists, what CI has verified, and **the per-phase decisions later
@@ -145,7 +146,7 @@ Also noted, not a bug but worth stating: `CGAL_assertion(t.is_valid())` compiles
 originally planned as a `0.3.1`, but the effort goes into the Rust port instead; B2, B4 and
 B5 are structural and only the rewrite fixes them. All five are fixed by construction in the
 Rust implementation — B1 in Phase 4, B3 and B5 in Phase 6, B4 in Phase 1 (the affine-hull
-reduction), B2 in Phase 5 (no global interner, §5.3).
+reduction), B2 in Phase 5 (no global interner, §5.3). All five are now done.
 
 The consequence for Phase 0 is that the fixture oracle is `0.3.0` as shipped, so inputs
 affected by B1 — `all_connected_triangulations(only_fine=True)` on configurations with
@@ -310,6 +311,8 @@ from the existing test suite) whose four enumerations all time out, and whose
 `all_triangulations` run was stopped under system memory pressure several minutes in.
 **Phase 5's acceptance criteria should include that configuration finishing** — streaming is
 what makes that possible, so it is a requirement rather than an optimisation.
+*(Phase 5: it streams in constant memory, but has more than 8.3 billion triangulations, so a
+full count takes hours; see §7.)*
 
 ### 5.5 Free-threading
 
@@ -465,9 +468,9 @@ a testable deliverable. LOC estimates come from [`CGAL.md` §9](CGAL.md) and
 | 2 | Oriented-matroid layer, placing and fine | `placing_triangulation`, `fine_triangulation` | low–med | ✅ **done** |
 | 3 | Circuits, flips and neighbours | `flips`, `bistellar_flips`, `neighbors` | med–hard | ✅ **done** |
 | 4 | Flip-graph enumeration | `all_connected_triangulations` | medium | ✅ **done** |
-| 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ▶ **next** |
+| 5 | Extension-graph enumeration | `all_triangulations` | **highest** | ✅ **done** |
 | 6 | Regular and Delaunay triangulations | `delaunay_triangulation`, `triangulate_with_*` | high | ✅ **done** |
-| 7 | Parity, performance, release | the 0.4.0 release | low | ⬜ |
+| 7 | Parity, performance, release | the 0.4.0 release | low | ▶ **next** |
 
 Phases 5 and 6 are independent of each other and share only the Phase 1 foundation, so they
 can be taken in either order, or in parallel.
@@ -611,7 +614,7 @@ build. In 169 of the latter TOPCOM's fine seed is not fine (duplicate points) an
 correctly returns nothing (§13). `vc_degenerate_flip` is not enumerated by any test. The
 Phase 4 decisions are in §13.
 
-### ⬜ Phase 5 — Extension-graph enumeration  *(~1 500 LOC, highest risk)*
+### ✅ Phase 5 — Extension-graph enumeration — **DONE** *(~1 500 lines of `src/` including docs and unit tests, highest risk)*
 
 * `om::cocircuit` (`Cocircuits`, `Facets`, `Incidences`) — in `om/`, per §6.1, since these
   are oriented-matroid objects and are what `points2cocircuits`/`points2facets` would expose.
@@ -636,6 +639,33 @@ graph is connected, the two enumerations must produce identical sets).
 — where the oracle times out on all four enumerations and exhausts memory (§5.4) —
 completes. That configuration is the phase's headline target, not a stretch goal: it is the
 one input in the corpus the C++ cannot handle at all.
+
+**Met.** `tests/extension.rs` matches all 54 trusted `all_triangulations[_fine]` results of
+the core corpus exactly, in canonical order (1 576 triangulations, every one `check`ed; 6
+"not full rank" rejections), and the six B1 configurations give the same set as the fixed
+flip graph. Against TOPCOM, the default run checks 388 `points2nalltriangs` and 432
+`points2nallfinetriangs` counts of at most 1 000 (716 of them as whole sets from
+`points2all[fine]triangs`), and that the flip graph gives the same set on all 796 of those;
+the `#[ignore]`d run checks every count TOPCOM finished — 456 and 461, 15.7 million
+triangulations, 92 s in release and 300 MB at peak (results above 200 000 are counted
+rather than collected; collecting two million `Triangulation`s takes gigabytes). No configuration in either corpus has a disconnected flip
+graph: TOPCOM's own `points2ntriangs` and `points2nalltriangs` agree wherever both
+finished, and the extension and flip graphs give identical sets. `tests/topcom.rs` adds
+cocircuits (`chiro2cocircuits`) and facets (`points2facets`) for all 504 configurations.
+**`vc_degenerate_flip`: streams and counts in constant memory, but does not finish in
+reasonable time.** It is not a 0.3-sized problem: it has **more than 8.3 billion
+triangulations and more than 4.3 billion fine ones** — the counts `par_count` reached in
+44 minutes on five and three threads (about 3.1 M/s and 1.6 M/s on a heavily loaded
+8-core machine) before the runs were stopped, with resident memory flat at about 4 MB
+throughout. An earlier 68-minute six-thread run was also stopped unfinished. TOPCOM
+itself managed 75 million in 22 minutes (one thread, `-O1`) and was still on its first
+top-level branch. So the oracle's failure was never only memory: the full count is
+hours of CPU even here. What the phase delivers is the property that matters — the
+enumeration of an arbitrarily large configuration starts at once, never grows, and can
+be counted, filtered or abandoned — plus `par_count` to spend all cores on it. The full
+count is the `#[ignore]`d `vc_degenerate_flip_count`; the default suite checks its tables
+(1 434 simplices, as TOPCOM) and streams its first 1 000 triangulations, and pytest
+streams 100 through Python.
 
 ### ✅ Phase 6 — Regular and Delaunay triangulations — **DONE** *(~1 350 lines of `src/regular/` including docs and unit tests, plus ~150 in `arith`; high risk)*
 
@@ -681,7 +711,7 @@ all identical. The flip-based oracle was not used: flips are Phase 3, being buil
 parallel; the brute-force oracle is the stronger check on small inputs anyway, since it
 also fixes the tie-breaking. Decisions are in §13.
 
-### ⬜ Phase 7 — Parity, performance, release
+### ▶ Phase 7 — Parity, performance, release
 
 * Full differential suite green across the corpus, order-sensitive per §5.6.
 * Criterion benchmarks against the `0.3.0` oracle. Watch two things specifically:
@@ -805,8 +835,8 @@ feature.)*
 
 ## 13. Current status
 
-**Phases 0–4 and 6 are complete; Phase 5 is next.** Nothing in phases 5 and 7 has been
-started. Phase 6 was developed in parallel on a separate branch and merged.
+**Phases 0–6 are complete; Phase 7 is next.** Nothing in Phase 7 has been started.
+Phase 6 was developed in parallel on a separate branch and merged.
 The phase table in §7 is the at-a-glance version; this section is the detail.
 
 | | |
@@ -814,9 +844,9 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | Branch | `rust-migration` — nothing is on `main` |
 | The old C++ | tag `legacy-cpp` (`c643162`); `git show legacy-cpp:src/triangulumancer/CGAL.cpp` etc. |
 | PyPI | still serves `0.3.0`; the crate version is `0.4.0-dev` |
-| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 101 tests, plus the `#[ignore]`d 10⁶-matrix, full flip-graph and 20 000-configuration regular-fuzz runs |
-| Python | `pytest`: 40 pass, 4 skip, all four awaiting Phase 5 |
-| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, 180 KiB, TOPCOM's own CLI tools |
+| Rust | `cargo build` / `test` / `clippy` / `doc` clean on both feature sets; 119 tests, plus the `#[ignore]`d 10⁶-matrix, full flip-graph, 20 000-configuration regular-fuzz, full extension-graph and `vc_degenerate_flip` runs |
+| Python | `pytest`: 52 pass, no skips |
+| Fixtures | `tests/fixtures/core.json.gz`, 31 configurations, 25 KiB, oracle `0.3.0`; `tests/fixtures/topcom.json.gz`, 504 configurations, ~245 KiB, TOPCOM's own CLI tools |
 
 ### What exists in `src/`
 
@@ -830,15 +860,17 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `om/mod.rs` | the `OrientedMatroid` trait; `check_basis`; `to_topcom_string` (`points2chiro` format) |
 | `om/chirotope.rs` | `Chirotope`, lazy and memoised; `Config::chirotope()` |
 | `om/circuit.rs` | `Circuit` with TOPCOM's orientation, `upper_facets`/`lower_facets`, `containment_ok`, `link_ok`, `common_link`; `circuits(om)` |
+| `om/cocircuit.rs` | `Cocircuit` with TOPCOM's orientation, `cocircuits(om, only_positive)`, `Facets`, `Incidence`/`Incidences` (interior and boundary facets of each basis) |
 | `symmetry.rs` | `Symmetry`, `TrivialGroup` — as §6.2, verbatim |
 | `triang/mod.rs`, `triang/check.rs` | `Triangulation`; `check`, the port of TOPCOM's `CheckTriang` |
 | `triang/placing.rs`, `triang/fine.rs` | `triang::placing`, `triang::fine` |
 | `triang/flip.rs` | `FlipRep`, `Flip`, `flip_reps` (naive), `flips`, `neighbors` |
 | `triang/flipgraph.rs` | `FlipGraph` (streaming BFS iterator, generic over `Symmetry`), `all_connected` |
+| `triang/extension/{mod,admissibles,bits}.rs` | `ExtensionGraph` (streaming DFS iterator, generic over `Symmetry`, `count` and multi-threaded `par_count`), `all_triangulations`; `Admissibles` (the bitset compatibility table) |
 | `regular/{mod,lift,predicates,tds,insert}.rs` | `delaunay`, `with_weights`, `with_heights`, `from_lifts`; `Scalar` exact lifts; CGAL-compatible symbolic perturbation; cell arena; walk + conflict-zone insertion |
-| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations` and `TriangulationIterator`; CGAL-replacement methods and `hidden_points`; only `all_triangulations` is still a `todo()` stub |
+| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations`, `all_triangulations`, `iter_all_triangulations` and `TriangulationIterator` (over either search); CGAL-replacement methods and `hidden_points`; no `todo()` stub is left |
 
-`om/cocircuit.rs` and `triang/extension` from §4 do not exist yet.
+§4's layout is complete except `om/gale.rs` (reserved) and `benches/` (Phase 7).
 
 Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `cargo test --release --test sign_of_det -- --ignored --nocapture`, about 40 s),
@@ -846,8 +878,9 @@ Tests: `tests/sign_of_det.rs` (the differential harness; run the full 10⁶ with
 `tests/fixture_triang.rs` (placing and fine against the corpus; `check` over every corpus
 triangulation and its corruptions), `tests/fixture_flips.rs` (flips and neighbours of
 placing against the corpus), `tests/flipgraph.rs` (the flip graph against the corpus, the
-B1 values and TOPCOM's enumerators) and `tests/regular.rs` (regular/Delaunay against the corpus, B3–B5 values, brute-force oracle fuzz) and `tests/topcom.rs` (chirotope, placing, fine,
-circuits and flip sets against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
+B1 values and TOPCOM's enumerators), `tests/extension.rs` (the extension graph against the
+corpus, TOPCOM's `points2[n]all[fine]triangs` and the flip graph; `vc_degenerate_flip`) and `tests/regular.rs` (regular/Delaunay against the corpus, B3–B5 values, brute-force oracle fuzz) and `tests/topcom.rs` (chirotope, placing, fine,
+circuits, flip sets, cocircuits and facets against TOPCOM's CLI). The corpus reader is `tests/common/mod.rs`; each test file includes
 it with `mod common;`.
 
 ### Phase 1 decisions later phases depend on
@@ -1134,6 +1167,66 @@ takes about 5 minutes on 4 cores.
   and `__hash__` hashes the simplices only. Comparison with a non-`Triangulation` is
   `False`.
 
+### Phase 5 decisions later phases depend on
+
+**Cocircuits, facets, incidences (`om::cocircuit`).**
+
+* `Cocircuit` mirrors `Circuit`: TOPCOM's orientation (`positive()` is the side of the
+  smallest element off the hyperplane), built by `Cocircuit::of_hyperplane(om, coplanar)`
+  from `sign_appended`. `cocircuits(om, only_positive)` is one per support, ordered by
+  support, and matches `chiro2cocircuits` exactly (all 504 TOPCOM configurations).
+* `Facets` is the sorted list of facets (label sets, possibly larger than `rank - 1`) from
+  the positive cocircuits; it matches `points2facets` on all 504 TOPCOM configurations,
+  which computes them a different way (from the placing triangulation's boundary). A
+  non-pointed vector configuration has none, and then every facet is interior.
+* `Incidences` keeps only TOPCOM's `_intfacets`/`_conffacets` half (per basis: interior
+  facets, and the configuration facets holding the others). The reverse maps feed only
+  `--fullextensioncheck` and regularity checks; add them with those.
+
+**The search (`triang::extension`).**
+
+* `Admissibles` holds the universe (every basis, or every empty one) in canonical order —
+  which *is* TOPCOM's simplex index order — and a `|U| × |U|` bit table built per circuit
+  as `star(Z⁺) × star(Z⁻)` rather than TOPCOM's `|U| × #circuits` loop. Memory is
+  `|U|²/8` bytes (264 KB for `vc_degenerate_flip`'s 1 434 simplices; ~100 MB at
+  `|U| ≈ 27 000`, e.g. 30 points in rank 4). That is the scaling limit, as in TOPCOM.
+* `ExtensionGraph` owns its tables and **not** the oriented matroid: all chirotope work
+  happens in the constructor, so the search cannot fail and yields plain `Triangulation`s
+  (`Item = Triangulation`, unlike `FlipGraph`'s `Result`). Python wraps it with `map(Ok)`.
+* The DFS is an explicit stack of per-level bitsets (admissibles over the universe, free
+  interior facets over the canonically numbered interior facets). The `forbidden` set is
+  not materialised: since every sibling before `s` is forbidden and the parent's
+  admissibles before `s` are exactly those siblings, a child's admissibles are
+  `parent ∩ Adm[s] ∩ (s, ∞)`. Uniqueness is therefore structural and was confirmed by
+  deduplication tests. The lexicographic cut and TOPCOM's `_noncoverable_freefacet_lex`
+  both reduce to integer comparisons via a precomputed `first_coverable[s]` (the number of
+  interior facets below `s`'s smallest facet). TOPCOM compares against the facet of
+  smallest *index*; using the true lex-minimum is the same or stronger and still sound
+  (any free facet below `s`'s smallest facet is uncoverable from `s` on).
+* `only_fine` is the empty-simplex universe, TOPCOM's rule verbatim (including that a
+  circuit with an empty side — a zero vector — marks every simplex non-empty). On top of
+  it, when some label is in no empty simplex (duplicates, zero vectors) the search is
+  empty, and every emitted triangulation is checked fine anyway; both agree with Phase 4's
+  "nothing when no fine triangulation exists", and `points2nallfinetriangs` returns 0 in
+  every such case.
+* Output order of the iterator is DFS order (deterministic, not canonical);
+  `all_triangulations` sorts. `Iterator::count` is overridden to skip building
+  triangulations (~1.6 M/s on `vc_degenerate_flip`, against ~0.5 M/s when materialised and
+  ~88 k/s for TOPCOM at `-O1`).
+* **`par_count(threads)`** (new, not in TOPCOM's defaults): `std::thread::scope` workers
+  share a queue; a busy worker checks every 4 096 nodes whether anyone is idle and, if so,
+  donates the untried siblings of its shallowest open level as a new search
+  (`Search::split`). No dependency was added. Scaling was not measured cleanly: five threads
+  reached about 2.5 times the single-thread rate on an 8-core machine already at load 15;
+  the same splitting is the natural basis for a parallel *enumeration* (with a
+  channel) in Phase 7 if wanted. Only counting is parallel today.
+* **Symmetry**: generic over `S: Symmetry`; `is_orbit_representative` filters output, and
+  `count` takes the fast path when `is_trivial()`. TOPCOM's real-group pruning
+  (`child_is_lexmin` on *partial* triangulations) has no trait method yet; whoever adds a
+  group should add one (`is_lexmin_extension(&partial, new_simplex)` or similar) and call
+  it where `ExtensionGraph` builds a child.
+* `Triangulation::from_trusted` (crate-private) skips the shape check, debug-asserted.
+
 ### Phase 6 decisions later phases depend on
 
 **Arithmetic.** `arith::sign_of_det_of<T: Entry>` runs the three tiers over `i64`, `i128`
@@ -1221,6 +1314,13 @@ build), the `#[ignore]`d full TOPCOM comparison in release, clippy and `cargo do
 7 skip). The two 0.3 tests asserting 387/64 still report as skipped because they go on to
 call `all_triangulations`; their flip-graph assertions run and pass first.
 
+Phase 5 likewise: `cargo test` (119 tests, 5 ignored; `tests/extension.rs` takes about
+30 s in a debug build, most of it the flip-graph cross-check), the `#[ignore]`d full
+TOPCOM comparison in release (92 s), clippy and `cargo doc` with `-D warnings` on both
+feature sets, `cargo fmt --check`, `prek -a`, and pytest (52 pass, 0 skip; the 387/64 and
+131/1 tests now run to the end). Every heavy command ran under
+`systemd-run --user --scope -p MemoryMax=3G` — see the warning in §14.
+
 **Verified in CI** (both workflows green on `rust-migration`, 16/16 jobs):
 
 * **Windows works.** `cargo build`/`test`/`clippy` and `pip install .[test]` + `pytest` all
@@ -1276,13 +1376,13 @@ git clone git@github.com:ariostas/triangulumancer.git
 cd triangulumancer
 git checkout rust-migration
 
-cargo test                                      # should pass, 101 tests (4 ignored)
+cargo test                                      # should pass, 119 tests (5 ignored)
 cargo clippy --all-targets -- -D warnings
 cargo clippy --features python --all-targets -- -D warnings
 
 uv venv .venv-dev
 VIRTUAL_ENV=.venv-dev uv pip install -e '.[test]'
-.venv-dev/bin/python -m pytest                  # should give 40 passes, 4 skips
+.venv-dev/bin/python -m pytest                  # should give 52 passes, no skips
 
 prek -a --quiet                                 # all hooks should pass
 ```
@@ -1329,20 +1429,29 @@ regenerating to do any of phases 1–7.
 
 Do not raise the timeout for `vc_degenerate_flip` hoping for better data; see §5.4.
 
-### Starting Phase 5
+### Starting Phase 7
 
-Phases 1–4 and 6 are done (recorded in §7, decisions in §13). Notes for Phase 5 from Phase 4:
+Phases 0–6 are done (recorded in §7, decisions in §13). Notes for Phase 7 from Phase 5:
 
-* The cross-check of §7 is ready: for every corpus configuration whose flip graph is
-  connected, `triang::all_connected(om, only_fine)` must equal the extension-graph result
-  as a set. On the TOPCOM corpus, `topcom.json.gz` already records `connected` (whole
-  components, up to 40 triangulations) and `n_connected`; adding `points2nalltriangs` /
-  `points2nallfinetriangs` counts to the generator is one line each (the binaries build
-  with the same recipe).
-* Build `chiro2circuits`-style references for `Admissibles`, not `points2circuits` (§13,
-  Phase 3 decisions).
-* `vc_degenerate_flip` has never been enumerated by any test; keep it behind `#[ignore]`
-  and a memory cap until Phase 5's streaming DFS is what is being measured.
+* **Cap memory on this kind of machine.** Run every cargo, test, Python and TOPCOM command
+  under `systemd-run --user --scope -q -p MemoryMax=3G -p MemorySwapMax=0 timeout <s> …`.
+  Two development sessions on a 13 GB machine were OOM-killed. The enumerations
+  themselves are not the risk any more (the extension graph streams in constant memory),
+  but collecting `vc_degenerate_flip`'s triangulations into a list, in Rust or Python,
+  never finishes: only count or stream it.
+* **Performance baselines** (release, `vc_degenerate_flip`): counting runs at about
+  1.6 M triangulations/s per thread (about 0.5 M/s when each `Triangulation` is built, so
+  the `BTreeSet`-based `Triangulation` is now the bottleneck of the iterator — interning
+  or a flat sorted representation is the lever), against TOPCOM's ~88 k/s at `-O1`.
+  Setup takes 26 ms. These are what Criterion should track.
+* `ExtensionGraph::par_count` is the template for parallel enumeration (and for the
+  optional parallel flip-graph BFS): `Search::split` donates subtrees on demand. A
+  parallel *iterator* would need a channel and gives up DFS order.
+* §12 question 4 still stands: `om::cocircuits`, `Facets`, `Incidences` and
+  `ExtensionGraph::count` are public in Rust but not bound in Python.
+* The fixture generator's `--only-extension` refreshes just the Phase 5 fields; run it
+  on an idle machine, since a loaded one turns borderline 20 s enumerations into
+  timeouts (recorded as `null`, which the tests tolerate).
 
 ### A warning about the `__repr__` strings
 

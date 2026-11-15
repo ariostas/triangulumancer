@@ -12,8 +12,9 @@
 //! * The flip graph: on every configuration here the flip graph is connected
 //!   (TOPCOM's own two enumerators agree on every one where both finished),
 //!   so the two enumerations must give the same set, `only_fine` included.
-//! * `vc_degenerate_flip`, which the oracle could not enumerate at all, is
-//!   counted by an `#[ignore]`d test (`vc_degenerate_flip_finishes`).
+//! * `vc_degenerate_flip`, which the oracle could not enumerate at all:
+//!   its tables and the first triangulations by default, and the full count
+//!   by an `#[ignore]`d test (`vc_degenerate_flip_count`) that takes hours.
 //!
 //! Every enumerated triangulation of the smaller results is also `check`ed.
 
@@ -30,6 +31,10 @@ use triangulumancer::triang::{self, ExtensionGraph, Triangulation};
 
 /// Results larger than this are only enumerated by the ignored test.
 const DEFAULT_LIMIT: u64 = 1000;
+
+/// Results larger than this are counted rather than collected: a million
+/// `Triangulation`s take gigabytes.
+const COLLECT_LIMIT: u64 = 200_000;
 
 /// The flip graph is compared only on results up to this size, even in the
 /// ignored test: it is about a hundred times slower per triangulation.
@@ -68,7 +73,7 @@ fn corpus_entry<K: Kind>(entry: &Value, tally: &mut Tally) {
         let expected = &results[method];
         assert!(!untrusted.contains(&method), "{name}: {method} untrusted");
         if expected.get("timeout").is_some() {
-            // `vc_degenerate_flip`: see `vc_degenerate_flip_finishes`.
+            // `vc_degenerate_flip`: see `vc_degenerate_flip_count`.
             tally.skipped += 1;
             continue;
         }
@@ -169,6 +174,18 @@ fn topcom_entry<K: Kind>(entry: &Value, limit: u64, tally: &mut TopcomTally) {
         let Some(n) = entry[count].as_u64().filter(|&n| n <= limit) else {
             continue;
         };
+        if n > COLLECT_LIMIT {
+            // Too many to hold comfortably: count them, in constant memory.
+            let ours = ExtensionGraph::new(&chi, only_fine).unwrap().count();
+            assert_eq!(ours as u64, n, "{name}: points2{count}");
+            if only_fine {
+                tally.fine_counts += 1;
+            } else {
+                tally.counts += 1;
+            }
+            tally.triangulations += ours;
+            continue;
+        }
         let ours = triang::all_triangulations(&chi, only_fine).unwrap();
         assert_eq!(ours.len() as u64, n, "{name}: points2{count}");
         if only_fine {
@@ -276,12 +293,17 @@ fn vc_degenerate_flip_tables() {
 }
 
 /// The phase 5 headline target (`PLAN.md` section 5.4): every triangulation
-/// of `vc_degenerate_flip`, counted in constant memory. Run it with
-/// `cargo test --release --test extension -- --ignored vc_degenerate_flip`;
-/// see `PLAN.md` section 13 for the time and memory it takes.
+/// of `vc_degenerate_flip`, counted in constant memory (a few megabytes).
+///
+/// It has more than 8.3 billion triangulations and 4.3 billion fine ones —
+/// the counts reached in 44 minutes on five and three threads respectively,
+/// at about 3 and 1.6 million per second, before the runs were stopped — so
+/// this takes hours. Run it, under a memory cap, with
+/// `cargo test --release --test extension -- --ignored vc_degenerate_flip_count`.
+/// Never collect these triangulations into a list.
 #[test]
-#[ignore = "tens of minutes on several threads in release mode"]
-fn vc_degenerate_flip_finishes() {
+#[ignore = "hours on all cores in release mode; see the doc comment"]
+fn vc_degenerate_flip_count() {
     let chi = vc_degenerate_flip();
     let threads = std::thread::available_parallelism().map_or(1, usize::from);
     let all = ExtensionGraph::new(&chi, false).unwrap().par_count(threads);
