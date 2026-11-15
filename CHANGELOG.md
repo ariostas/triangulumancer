@@ -22,7 +22,8 @@ expected corrected values in
 ### Packaging
 
 - No C or C++ dependency of any kind: no CMake, CGAL, Boost, Eigen, GMP, MPFR or
-  cddlib. Building from source needs only a Rust toolchain (1.85 or newer).
+  cddlib. Building from source needs only a Rust toolchain (1.85 or newer); the
+  build backend is maturin 1.12 or newer.
 - **Windows is supported**, for the first time. Wheels are built for Linux
   (x86_64 and aarch64), macOS and Windows.
 - One `abi3` wheel per platform covers CPython 3.10 and later, plus a separate

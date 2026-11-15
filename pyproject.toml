@@ -1,5 +1,9 @@
 [build-system]
-requires = ["maturin>=1.5,<2.0"]
+# 1.12 is the first maturin whose sdist builds: older ones keep the `[[bench]]`
+# targets of Cargo.toml while leaving `benches/` out (it is not in `include`), so
+# cargo cannot parse the unpacked manifest. It also writes `license` as a PEP 639
+# `License-Expression` (from 1.9.2; before 1.8.2 `license-files` does not parse).
+requires = ["maturin>=1.12,<2.0"]
 build-backend = "maturin"
 
 [project]
