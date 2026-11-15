@@ -124,7 +124,11 @@ impl Geometry {
         let n = reduced.len();
         let lifts = match lifts
             .iter()
-            .map(|l| i128::try_from(l).ok().filter(|x| x.abs() < SMALL_LIFT))
+            .map(|l| {
+                i128::try_from(l)
+                    .ok()
+                    .filter(|x| x.unsigned_abs() < SMALL_LIFT.unsigned_abs())
+            })
             .collect::<Option<Vec<i128>>>()
         {
             Some(small) => Lifts::Small(small),
@@ -133,8 +137,11 @@ impl Geometry {
         let coords = reduced.to_row_major();
         let exact = match &lifts {
             Lifts::Small(l)
-                if coords.iter().all(|x| x.abs() < EXACT_BELOW)
-                    && l.iter().all(|x| x.abs() < i128::from(EXACT_BELOW)) =>
+                if coords
+                    .iter()
+                    .all(|x| x.unsigned_abs() < EXACT_BELOW.unsigned_abs())
+                    && l.iter()
+                        .all(|x| x.unsigned_abs() < EXACT_BELOW.unsigned_abs().into()) =>
             {
                 Some((
                     coords.iter().map(|&x| x as f64).collect(),
@@ -359,5 +366,58 @@ mod tests {
         assert_eq!(g.power_side(&[0, 1], 2), Sign::Positive);
         let g = Geometry::new(&c, &c, vec![big.clone(), big.clone(), big + 1]);
         assert_eq!(g.power_side(&[0, 1], 2), Sign::Negative);
+    }
+
+    /// The fast `f64` path must not be taken for `i64::MIN` coordinates:
+    /// `i64::MIN.abs()` wraps, and the rounded differences gave a wrong
+    /// orientation (found by an audit of the filter).
+    #[test]
+    fn min_coordinate_does_not_take_fast_path() {
+        const MIN: i64 = i64::MIN;
+        let (sp, sa, sy, sx) = (
+            1_330_303_205_370_881_i64,
+            295_058_160_636_927_i64,
+            2_133_966_648_241_151_i64,
+            1_098_631_412_130_817_i64,
+        );
+        #[rustfmt::skip]
+        let coords = [
+            MIN, 0, 0, 0, MIN,
+            sp, 0, 0, 0, sy,
+            MIN, 1, 0, 0, MIN,
+            MIN, 0, 1, 0, MIN,
+            MIN, 0, 0, 1, MIN,
+            sa, 0, 0, 0, sx,
+        ];
+        let g = geometry(&coords, 5, &[0; 6]);
+        assert!(g.exact.is_none());
+        let mut m = Vec::new();
+        for k in 1..6 {
+            for j in 0..5 {
+                m.push(IBig::from(coords[k * 5 + j]) - IBig::from(coords[j]));
+            }
+        }
+        let exact = arith::bareiss::sign_of_det_bigint_of(&m, 5);
+        assert_eq!(g.orient(&[0, 1, 2, 3, 4, 5], None), exact);
+
+        // End to end: zero lifts and a constant lift of 2^60 describe the
+        // same subdivision, so they must agree.
+        let mut c = coords.to_vec();
+        c.extend_from_slice(&[MIN, 1, 1, 1, MIN]);
+        let cfg = PointConfig::from_row_major(&c, 7, 5).unwrap();
+        let zero = crate::regular::from_lifts(&cfg, vec![IBig::ZERO; 7]).unwrap();
+        let shifted = crate::regular::from_lifts(&cfg, vec![IBig::ONE << 60; 7]).unwrap();
+        assert_eq!(zero, shifted);
+    }
+
+    /// A lift of exactly `i128::MIN` must not be classed as small: its `abs`
+    /// wraps, and the subtraction of lifts then overflowed.
+    #[test]
+    fn i128_min_lift() {
+        let cfg = PointConfig::from_row_major(&[0, 2, 1], 3, 1).unwrap();
+        let min = IBig::from(i128::MIN);
+        let a = crate::regular::from_lifts(&cfg, vec![IBig::ZERO, IBig::ZERO, min.clone()]);
+        let b = crate::regular::from_lifts(&cfg, vec![IBig::ZERO, IBig::ZERO, min - 1]);
+        assert_eq!(a.unwrap(), b.unwrap());
     }
 }

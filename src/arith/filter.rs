@@ -107,10 +107,17 @@
 //! and the bounds above apply. Comparisons are written so that `NaN` fails
 //! them.
 //!
+//! The rounding counts above assume Rust's left-to-right evaluation of each
+//! radius expression with no fused multiply-add contraction, which is what
+//! rustc emits; reordering them would require recounting.
+//!
 //! The constants are generous by design: `E` makes the filter decline only
-//! for pivots below about `2⁻⁹⁹⁰`, which integer matrices do not produce
-//! before their entries leave the `f64` range, and `C` costs a relative
-//! `2⁻⁴⁰` per step, far below the rounding errors it covers. The differential
+//! for pivots below about `2⁻⁹⁹⁰`, and `C` costs a relative `2⁻⁴⁰` per step,
+//! far below the rounding errors it covers. Such tiny pivots are possible in
+//! principle (`[[2¹⁰⁰⁰, 1], [1, 0]]` has second pivot `−2⁻¹⁰⁰⁰`), but with
+//! `i64`/`i128` entries and the matrix sizes used here pivots stay far above
+//! that; only huge bigint entries reach it, and then the filter merely
+//! declines. The differential
 //! harness `tests/sign_of_det.rs` checks the filter against an exact oracle,
 //! including an adversarial family swept across the filter's decision
 //! threshold.
@@ -218,6 +225,17 @@ pub fn sign_of_det(m: SquareMatrix<'_>) -> Option<Sign> {
 pub(crate) fn sign_of_det_integral(n: usize, fill: impl FnOnce(&mut [f64])) -> Option<Sign> {
     with_buffers(n * n, |mid, rad| {
         fill(mid);
+        // Backstop for the caller's contract: every entry must be an
+        // integer of magnitude at most 2^53, so that radius 0 is exact. A
+        // violation is a bug in the caller, so decline rather than risk a
+        // wrong sign; this costs n^2 comparisons against n^3 work.
+        if !mid
+            .iter()
+            .all(|&x| x.abs() <= EXACT_LIMIT as f64 && x.fract() == 0.0)
+        {
+            debug_assert!(false, "sign_of_det_integral: inexact entry");
+            return None;
+        }
         eliminate(mid, rad, n)
     })
 }
