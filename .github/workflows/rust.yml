@@ -53,6 +53,17 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Clippy with the Python bindings
         run: cargo clippy --locked --features python --all-targets -- -D warnings
+      # What docs.rs will build, with the same KaTeX header.
+      - name: Documentation
+        if: matrix.os == 'ubuntu-24.04'
+        run: cargo doc --locked --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings --html-in-header docs-header.html
+      # Builds the crate from exactly the files crates.io would get, so a file
+      # missing from `include` in Cargo.toml fails here rather than at release.
+      - name: Package
+        if: matrix.os == 'ubuntu-24.04'
+        run: cargo package --locked
 
   check-rust:
     name: Check Rust

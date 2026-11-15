@@ -44,6 +44,13 @@ jobs:
         run: python -m pip install .[test]
       - name: Run pytest
         run: pytest -vv
+      # The README's examples are doctests; the code fences have to go first,
+      # or doctest reads each closing fence as part of the expected output.
+      - name: Check the README examples
+        shell: bash
+        run: |
+          sed 's/^```.*$//' README.md > "$RUNNER_TEMP/README.txt"
+          python -m doctest -o ELLIPSIS "$RUNNER_TEMP/README.txt"
 
   check-python:
     name: Check Python

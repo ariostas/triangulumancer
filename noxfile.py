@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import nox
 
 
@@ -21,6 +24,42 @@ def tests(session: nox.Session) -> None:
     """
     session.install(".[test]")
     session.run("pytest", *session.posargs)
+
+
+@nox.session
+def readme(session: nox.Session) -> None:
+    """
+    Run the README's examples as doctests against a fresh install.
+    """
+    session.install(".")
+    # doctest would read each closing code fence as expected output.
+    text = Path("README.md").read_text(encoding="utf-8")
+    examples = Path(session.create_tmp()) / "README.txt"
+    examples.write_text(re.sub(r"(?m)^```.*$", "", text), encoding="utf-8")
+    session.run("python", "-m", "doctest", "-o", "ELLIPSIS", str(examples))
+
+
+@nox.session(venv_backend="none")
+def docs(session: nox.Session) -> None:
+    """
+    Build the Rust documentation as docs.rs does, with KaTeX.
+    """
+    session.run(
+        "cargo",
+        "doc",
+        "--no-deps",
+        *session.posargs,
+        env={"RUSTDOCFLAGS": "--html-in-header docs-header.html"},
+        external=True,
+    )
+
+
+@nox.session(venv_backend="none")
+def package(session: nox.Session) -> None:
+    """
+    Check the crate packages and builds from exactly what crates.io would get.
+    """
+    session.run("cargo", "package", "--locked", *session.posargs, external=True)
 
 
 @nox.session

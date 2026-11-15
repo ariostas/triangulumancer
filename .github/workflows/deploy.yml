@@ -27,8 +27,11 @@ jobs:
     name: Build wheels
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2022]
+        # macos-15 is arm64 and macos-15-intel x86_64; each builds its native
+        # architecture, so every wheel is tested where it was built.
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2022]
     env:
       # These are the artifacts users actually install, so the wheels must be
       # built from the committed lockfile rather than a fresh resolution.
@@ -39,18 +42,27 @@ jobs:
       - name: Build wheels
         run: pipx run cibuildwheel
         env:
-          CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH" CARGO_TERM_COLOR="always" MATURIN_PEP517_ARGS="--locked"'
+          CIBW_ENVIRONMENT: 'CARGO_TERM_COLOR="always" MATURIN_PEP517_ARGS="--locked"'
+          # Only the Linux builds run in a container, where rustup installs into
+          # $HOME/.cargo. On macOS and Windows the runner's own Rust is on PATH
+          # already, and a ':'-separated PATH would corrupt Windows' PATH.
+          CIBW_ENVIRONMENT_LINUX: 'PATH="$HOME/.cargo/bin:$PATH" CARGO_TERM_COLOR="always" MATURIN_PEP517_ARGS="--locked"'
           CIBW_BEFORE_BUILD: rustup show
           CIBW_BEFORE_BUILD_LINUX: >
             curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=stable --profile=minimal -y &&
             rustup show
-          CIBW_TEST_COMMAND: "pytest -vv {project}"
-          CIBW_TEST_REQUIRES: pytest
-          CIBW_SKIP: "*_i686 *-macosx_x86_64"
-          # abi3-py310 covers the GIL-enabled builds with a single wheel, but
+          CIBW_TEST_COMMAND: "pytest -vv {project}/python/tests"
+          CIBW_TEST_EXTRAS: test
+          # abi3-py310 covers every GIL-enabled CPython with a single wheel, but
           # free-threaded 3.14 has no stable ABI (abi3t arrives with 3.15, per
-          # PEP 803), so it needs its own version-specific wheel.
+          # PEP 803), so it needs its own version-specific wheel. cp314 builds
+          # nothing new: cibuildwheel reuses the cp310 abi3 wheel and only tests
+          # it, on the newest interpreter.
+          CIBW_BUILD: "cp310-* cp314-* cp314t-*"
           CIBW_ENABLE: cpython-freethreading
+          # 32-bit targets: the runners' Rust toolchains do not include them, and
+          # 0.3 did not ship them either.
+          CIBW_SKIP: "*_i686 *-win32"
           CIBW_BUILD_VERBOSITY: 1
       - name: Upload wheels
         uses: actions/upload-artifact@v7
@@ -87,13 +99,15 @@ jobs:
     environment:
       name: crates.io
       url: https://crates.io/crates/triangulumancer
-    permissions:
-      id-token: write
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
       - name: Check out repo
         uses: actions/checkout@v7
+      # A new crate's first release needs an API token. Once the crate exists,
+      # crates.io trusted publishing can replace it: configure the repository
+      # there, grant `id-token: write`, and swap this for
+      # rust-lang/crates-io-auth-action.
       - name: Publish to crates.io
-        run: |
-          cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          cargo publish --locked
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
