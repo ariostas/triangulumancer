@@ -895,7 +895,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `triang/flipgraph.rs` | `FlipGraph` (streaming BFS iterator, generic over `Symmetry`), `all_connected` |
 | `triang/extension/{mod,admissibles,bits}.rs` | `ExtensionGraph` (streaming DFS iterator, generic over `Symmetry`, `count` and multi-threaded `par_count`), `all_triangulations`; `Admissibles` (the bitset compatibility table) |
 | `regular/{mod,lift,predicates,tds,insert}.rs` | `delaunay`, `with_weights`, `with_heights`, `from_lifts`; `Scalar` exact lifts; CGAL-compatible symbolic perturbation; cell arena; walk + conflict-zone insertion |
-| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations`, `all_triangulations`, `iter_all_triangulations` and `TriangulationIterator` (over either search); CGAL-replacement methods and `hidden_points`; no `todo()` stub is left |
+| `python.rs` | configuration classes, `placing_triangulation`, `fine_triangulation`, `Triangulation` with `flips`/`bistellar_flips`/`neighbors`/`__eq__`/`__hash__`, `Flip`, `all_connected_triangulations`, `iter_all_connected_triangulations`, `all_triangulations`, `iter_all_triangulations` and `TriangulationIterator` (over either search); CGAL-replacement methods and `hidden_points`; the `todo()` stub helper and the pytest skip hook are removed |
 
 §4's layout is complete except `om/gale.rs` (reserved); `benches/` landed in Phase 7.
 

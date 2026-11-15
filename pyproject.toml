@@ -82,7 +82,6 @@ cache-keys = [
 ]
 
 [tool.pytest.ini_options]
-# 8.0 for `@pytest.hookimpl(wrapper=True)`, used by python/tests/conftest.py.
 minversion = "8.0"
 addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
 xfail_strict = true

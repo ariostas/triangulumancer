@@ -58,10 +58,10 @@ python scripts/gen_topcom_fixtures.py --topcom-bin DIR   # TOPCOM-CLI fixtures (
 * Public enums are `#[non_exhaustive]`.
 * Output ordering is canonical and deterministic: simplices sorted internally,
   then sorted between themselves. Tests depend on this.
-* Methods for phases that have not landed raise `NotImplementedError` via the
-  `todo()` helper in `src/python.rs`. `python/tests/conftest.py` turns that into
-  a skip, so the pytest suite lights up phase by phase with no test edits.
-  Since phase 5 no stub is left, and the suite should run with no skips.
+* Every Python method is implemented. During the migration, methods for phases
+  that had not landed raised `NotImplementedError` and a pytest hook turned that
+  into a skip; both are gone, so a `NotImplementedError` is now a plain failure
+  and the suite runs with no skips beyond platform-specific ones.
 
 ## Testing against the C++ oracle
 

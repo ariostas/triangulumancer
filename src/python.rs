@@ -17,9 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use numpy::ndarray::Array2;
 use numpy::{AllowTypeChange, IntoPyArray, PyArray2, PyArrayLikeDyn};
-use pyo3::exceptions::{
-    PyIndexError, PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError,
-};
+use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyFloat;
 
@@ -50,18 +48,6 @@ impl From<Error> for PyErr {
             | Error::Internal(_) => PyRuntimeError::new_err(msg),
         }
     }
-}
-
-/// Raise `NotImplementedError` naming the phase that will implement `what`.
-///
-/// Unused since the 0.3 surface was completed; kept for bindings that
-/// land ahead of their implementation.
-#[allow(dead_code)]
-fn todo<T>(what: &str, phase: u8) -> PyResult<T> {
-    Err(PyNotImplementedError::new_err(format!(
-        "{what} is not implemented yet; it lands in phase {phase} of the Rust \
-         migration (see PLAN.md)"
-    )))
 }
 
 // ---------------------------------------------------------------------------
