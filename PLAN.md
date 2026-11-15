@@ -885,7 +885,7 @@ The phase table in §7 is the at-a-glance version; this section is the detail.
 | `config.rs`, `config/hull.rs` | `Config<K: Kind>` with markers `Points`/`Vectors`, `Lockable<K>`, `reduce_to_hull` |
 | `simplex.rs` | `Simplex` (inline `u128` bitmask, sorted label list above 128), `SimplexSet` (canonically ordered set of simplices), `combinations` (lex-order `k`-subsets) |
 | `om/mod.rs` | the `OrientedMatroid` trait; `check_basis`; `to_topcom_string` (`points2chiro` format) |
-| `om/chirotope.rs` | `Chirotope`, lazy and memoised; `Config::chirotope()` |
+| `om/chirotope.rs` | `Chirotope`, lazy and memoised (bounded cache); `Config::chirotope()` |
 | `om/circuit.rs` | `Circuit` with TOPCOM's orientation, `upper_facets`/`lower_facets`, `containment_ok`, `link_ok`, `common_link`; `circuits(om)` |
 | `om/cocircuit.rs` | `Cocircuit` with TOPCOM's orientation, `cocircuits(om, only_positive)`, `Facets`, `Incidence`/`Incidences` (interior and boundary facets of each basis) |
 | `symmetry.rs` | `Symmetry`, `TrivialGroup` — as §6.2, verbatim |
@@ -1033,7 +1033,8 @@ changed.
 * `Chirotope` **owns a copy of the homogenised matrix** (as a `VectorConfig`), so it has no
   lifetime, is `'static`, and does not care whether it came from points or vectors. Its
   cache is a `RwLock<HashMap<Simplex, Sign>>`: `Send + Sync`, owned per chirotope, nothing
-  global. `Chirotope::new` (or `Config::chirotope()`) calls `require_full_rank()`, so every
+  global, and bounded at 2¹⁶ signs, emptied when full (see "Review fixes" below).
+  `Chirotope::new` (or `Config::chirotope()`) calls `require_full_rank()`, so every
   TOPCOM method rejects rank-deficient input with `Error::NotFullRank`, as the oracle does.
   Every query takes the read lock; if Phase 5 or 7 profiling shows that, the levers are an
   unsynchronised variant behind the same trait, or an eager table indexed by combination

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 
 from triangulumancer import PointConfiguration, Triangulation, VectorConfiguration
@@ -172,3 +175,39 @@ def test_vc_triangulation_with_degenerate_flip() -> None:
     t = vc.fine_triangulation()
 
     assert len(t.simplices) == 46
+
+
+def test_large_fine_memory_is_bounded() -> None:
+    if sys.platform == "win32":
+        pytest.skip("needs the resource module")
+    # The fine triangulation and the validity check ask for tens of millions
+    # of distinct chirotope signs on a grid this size. With every sign
+    # memoised, this run peaked at ~200 MiB and a 60 x 60 grid at 1.4 GiB; the
+    # cache is bounded now. Run in a subprocess so that the peak is this
+    # computation's alone.
+    code = """
+import random, resource, sys
+from triangulumancer import PointConfiguration, Triangulation
+pts = [[x, y] for x in range(40) for y in range(40)]
+random.Random(1).shuffle(pts)
+p = PointConfiguration(pts)
+t = p.fine_triangulation()
+assert t.n_simplices == 2 * 39 * 39, t.n_simplices
+Triangulation(p, t.simplices)
+try:
+    # This process's own peak. On Linux ru_maxrss would not do: it carries
+    # over the peak of the process that spawned this one (pytest, which may be
+    # bigger than the limit), across fork and exec.
+    with open("/proc/self/status") as f:
+        kib = next(int(line.split()[1]) for line in f if line.startswith("VmHWM:"))
+except OSError:
+    # ru_maxrss is in bytes on macOS (which has no /proc) and in KiB on Linux.
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    kib = peak // (1024 if sys.platform == "darwin" else 1)
+print(kib // 1024)
+"""
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    peak_mib = int(out.stdout.strip())
+    assert peak_mib < 100, f"peak RSS {peak_mib} MiB"
