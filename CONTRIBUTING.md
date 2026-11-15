@@ -5,7 +5,8 @@ please open an issue first so the approach can be discussed.
 
 ## Setup
 
-You need a Rust toolchain (1.85 or newer, via [rustup](https://rustup.rs/)),
+You need a Rust toolchain (1.86 or newer for the tests and benchmarks, though the
+library itself builds with 1.85; via [rustup](https://rustup.rs/)),
 [uv](https://docs.astral.sh/uv/), and [prek](https://github.com/j178/prek) (or
 `pre-commit`) for the linters. There are no system libraries to install.
 

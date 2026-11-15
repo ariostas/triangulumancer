@@ -65,10 +65,27 @@ jobs:
         if: matrix.os == 'ubuntu-24.04'
         run: cargo package --locked
 
+  msrv:
+    name: Minimum Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+      - name: Install the toolchain named by rust-version in Cargo.toml
+        run: |
+          msrv=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[0].rust_version')
+          rustup toolchain install "$msrv" --profile minimal
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+      # The library only, with every feature (the Python bindings included).
+      # Not the tests or benchmarks: their dev-dependencies (criterion) may
+      # need a newer compiler, which does not bind the crate's users.
+      - name: Check
+        run: cargo +"$MSRV" check --locked --all-features
+
   check-rust:
     name: Check Rust
     if: always()
-    needs: [build-and-test]
+    needs: [build-and-test, msrv]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

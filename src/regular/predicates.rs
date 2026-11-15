@@ -204,21 +204,22 @@ impl Geometry {
             Some((slot, q)) if slot == k => q,
             _ => verts[k],
         };
-        if d >= FAST_FROM
-            && let Some((cf, _)) = &self.exact
-        {
-            let point = |i: u32| &cf[i as usize * d..(i as usize + 1) * d];
-            let base = point(at(0));
-            let decided = filter::sign_of_det_integral(d, |buf| {
-                for k in 1..=d {
-                    let p = point(at(k));
-                    for j in 0..d {
-                        buf[(k - 1) * d + j] = p[j] - base[j];
+        // Nested rather than a let-chain, which would need Rust 1.88.
+        if d >= FAST_FROM {
+            if let Some((cf, _)) = &self.exact {
+                let point = |i: u32| &cf[i as usize * d..(i as usize + 1) * d];
+                let base = point(at(0));
+                let decided = filter::sign_of_det_integral(d, |buf| {
+                    for k in 1..=d {
+                        let p = point(at(k));
+                        for j in 0..d {
+                            buf[(k - 1) * d + j] = p[j] - base[j];
+                        }
                     }
+                });
+                if let Some(sign) = decided {
+                    return sign;
                 }
-            });
-            if let Some(sign) = decided {
-                return sign;
             }
         }
         let base = self.point(at(0));

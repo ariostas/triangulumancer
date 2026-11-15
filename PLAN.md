@@ -1683,7 +1683,8 @@ CI is broken until someone makes the same change there**, independently of this 
 ### Prerequisites
 
 ```bash
-# Rust: 1.85+ (edition 2024). Nothing else to install — no CMake, no CGAL, no GMP.
+# Rust: 1.85+ (edition 2024) for the library, 1.86+ for the tests and benchmarks
+# (criterion). Nothing else to install — no CMake, no CGAL, no GMP.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # uv, for the dev venv and for the fixture generator's throwaway oracle venv.

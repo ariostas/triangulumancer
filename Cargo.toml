@@ -4,7 +4,8 @@ version = "0.4.0-dev"
 description = "Triangulations of point and vector configurations: regular, Delaunay, placing and fine triangulations, bistellar flips, and enumeration."
 authors = ["Andres Rios Tascon"]
 edition = "2024"
-# Edition 2024 requires 1.85; nothing here needs anything newer yet.
+# Edition 2024 requires 1.85, and the library needs nothing newer (CI checks it,
+# with every feature). The dev-dependencies may: criterion 0.8 needs 1.86.
 rust-version = "1.85"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/ariostas/triangulumancer"
