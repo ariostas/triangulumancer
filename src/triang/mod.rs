@@ -118,7 +118,7 @@ impl Triangulation {
                 found: labels.len(),
             });
         }
-        let mut simplices = SimplexSet::new();
+        let mut simplices = Vec::with_capacity(labels.len() / width);
         for row in labels.chunks_exact(width) {
             let mut s = Simplex::new();
             for &label in row {
@@ -137,12 +137,18 @@ impl Triangulation {
                     )));
                 }
             }
-            if !simplices.insert(s) {
-                return Err(Error::InvalidTriangulation(format!(
-                    "simplex {row:?} listed twice"
-                )));
-            }
+            simplices.push(s);
         }
+        // Sort once rather than inserting row by row: inserting into the
+        // sorted list is O(len), so that would be quadratic in the rows.
+        simplices.sort_unstable();
+        if let Some(w) = simplices.windows(2).find(|w| w[0] == w[1]) {
+            return Err(Error::InvalidTriangulation(format!(
+                "simplex {:?} listed twice",
+                w[0].to_vec()
+            )));
+        }
+        let simplices = SimplexSet::from_sorted_vec(simplices);
         Ok(Self { n, rank, simplices })
     }
 
@@ -288,5 +294,37 @@ mod tests {
         assert!(Triangulation::from_labels(4, 3, &[], 3).unwrap().is_empty());
 
         assert!(Triangulation::new(4, 3, SimplexSet::from_iter([Simplex::from([0, 1])])).is_err());
+    }
+
+    /// Many rows in reverse canonical order: inserting them one at a time into
+    /// the sorted list was quadratic (200 000 rows took 38 s in release).
+    #[test]
+    fn from_labels_is_not_quadratic() {
+        // All 3-subsets of 90 labels is 117 480 rows; of 40, 9 880.
+        let n: i64 = if cfg!(debug_assertions) { 40 } else { 90 };
+        let mut labels = Vec::new();
+        for a in (0..n).rev() {
+            for b in (0..a).rev() {
+                for c in (0..b).rev() {
+                    labels.extend([a, b, c]);
+                }
+            }
+        }
+        let start = std::time::Instant::now();
+        let t = Triangulation::from_labels(n as usize, 3, &labels, 3).unwrap();
+        let elapsed = start.elapsed();
+        assert_eq!(t.len(), labels.len() / 3);
+        assert!(t.simplices().iter().is_sorted());
+        // The quadratic version took about 9 s at this size in release; the
+        // sort takes milliseconds. Generous, for loaded machines.
+        if !cfg!(debug_assertions) {
+            assert!(elapsed.as_secs_f64() < 2.0, "{elapsed:?}");
+        }
+        // A duplicate far from its twin is still found.
+        labels.extend([0, 1, 2]);
+        assert!(matches!(
+            Triangulation::from_labels(n as usize, 3, &labels, 3),
+            Err(Error::InvalidTriangulation(m)) if m.contains("listed twice")
+        ));
     }
 }
