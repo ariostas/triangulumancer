@@ -6,6 +6,7 @@ from triangulumancer._core import (
     Flip,
     PointConfiguration,
     Triangulation,
+    TriangulationIterator,
     VectorConfiguration,
     __version__,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "Flip",
     "PointConfiguration",
     "Triangulation",
+    "TriangulationIterator",
     "VectorConfiguration",
     "__version__",
 ]

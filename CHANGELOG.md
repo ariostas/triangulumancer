@@ -124,8 +124,9 @@ expected corrected values in
 
 - `iter_all_triangulations(only_fine=False)` and
   `iter_all_connected_triangulations(only_fine=False)` on both configuration
-  classes return iterators that produce triangulations one at a time, in the
-  search's own (deterministic, unsorted) order. The first works in constant
+  classes return iterators (`triangulumancer.TriangulationIterator`) that
+  produce triangulations one at a time, in the search's own (deterministic,
+  unsorted) order. The first works in constant
   memory however many triangulations there are; the second keeps the set already
   found. Each step runs with the GIL released.
 - `Triangulation.is_fine`: whether every point or vector is a vertex.
